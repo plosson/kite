@@ -1,3 +1,17 @@
+# Kite
+
+> **Kite is a modified fork of [Open Artifact](https://github.com/iBala/open-artifact).**
+> It is not the original product and is not endorsed by its authors. Kite is
+> distributed free of charge, for non-commercial purposes, under the same
+> [Sustainable Use License](LICENSE) as Open Artifact. It is source-available
+> (fair-code), not OSI-approved open source. The changes made in this fork are
+> recorded in its git history.
+
+The documentation below is Open Artifact's and applies to Kite unless this fork
+says otherwise.
+
+---
+
 # Open Artifact
 
 Your coding agent writes a report, a design doc, a dashboard. Right now that

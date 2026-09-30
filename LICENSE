@@ -1,3 +1,13 @@
+# Notice of modification
+
+Kite is a modified version of Open Artifact
+(https://github.com/iBala/open-artifact). It has been changed from the original
+by the Kite maintainers; the changes are recorded in this repository's git
+history. Kite is distributed free of charge, for non-commercial purposes, under
+the unchanged terms below.
+
+---
+
 # Open Artifact License
 
 Open Artifact is **fair-code** software, distributed under the Sustainable Use
