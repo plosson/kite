@@ -322,7 +322,7 @@ function Bar({
 }: {
   artifact: SharedArtifact;
   byline: string | null;
-  /** Show the Open Artifact wordmark on the left, for readers with no sidebar. */
+  /** Show the Kite wordmark on the left, for readers with no sidebar. */
   brand?: boolean;
   children?: React.ReactNode;
 }) {
@@ -333,7 +333,7 @@ function Bar({
           to="/"
           className="shrink-0 text-[12.5px] font-semibold text-ink-2 transition-colors hover:text-ink"
         >
-          Open Artifact
+          Kite
         </Link>
       )}
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -504,13 +504,13 @@ function Body({
  *
  * Only somebody who read to here sees it, which is exactly the person worth
  * asking. It does not interrupt, and it does not sell; it names what this is and
- * offers the door. The link goes to the front page, which is the setup guide.
+ * offers the door. The link goes to the front page, which is the sign-in form.
  */
 function PublishFooter() {
   return (
     <div className="border-t border-line px-6 py-5">
       <p className="mx-auto flex max-w-[720px] flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-ink-3">
-        <span>Published with Open Artifact.</span>
+        <span>Published with Kite.</span>
         <Link to="/" className="font-medium text-accent hover:underline">
           Publish your own →
         </Link>

@@ -27,7 +27,7 @@ async function enterCode(page: Page, code: string): Promise<void> {
 test('sign in with an emailed code and land on the dashboard', async ({ page }) => {
   await page.goto(server.baseUrl);
 
-  await expect(page.getByRole('heading', { name: 'Open Artifact' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Kite' })).toBeVisible();
 
   await page.getByLabel('Email address').fill('newcomer@example.com');
   await page.getByRole('button', { name: /email me a code/i }).click();
@@ -96,7 +96,7 @@ test('opening an artifact shows it, with the sidebar out of the way', async ({ p
   // document gets the width. One click brings it back.
   await expect(page.getByRole('button', { name: 'Show sidebar' })).toBeVisible();
   await page.getByRole('button', { name: 'Show sidebar' }).click();
-  await expect(page.getByRole('link', { name: 'Open Artifact' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Kite' })).toBeVisible();
 });
 
 test('starring an artifact pins it to its own sidebar section', async ({ page, context }) => {
@@ -216,12 +216,13 @@ test('a reader is invited to publish their own, but the owner is not', async ({ 
   const anonymous = await context.browser()!.newContext();
   const stranger = await anonymous.newPage();
   await stranger.goto(`${server.baseUrl}/a/${artifact.slug}`);
-  await expect(stranger.getByRole('link', { name: 'Open Artifact' })).toBeVisible();
+  await expect(stranger.getByRole('link', { name: 'Kite' })).toBeVisible();
   const cta = stranger.getByRole('link', { name: /publish your own/i });
   await expect(cta).toBeVisible();
-  // It leads to the front door, which is the setup guide.
+  // It leads to the front door, which is a sign-in form.
   await cta.click();
-  await expect(stranger.getByRole('heading', { name: /paste this into your assistant/i })).toBeVisible();
+  await expect(stranger.getByRole('heading', { name: 'Kite' })).toBeVisible();
+  await expect(stranger.getByLabel('Email address')).toBeVisible();
   await anonymous.close();
 });
 
@@ -265,21 +266,20 @@ test('a signed-out visitor sees a blurred shape, and none of the document', asyn
   expect(body).not.toContain('8827361');
 });
 
-test('the front door explains how to start, and the invited reader is not sold to', async ({
+test('the front door is a plain sign-in form, and so is the invited reader\'s', async ({
   page,
 }) => {
-  // Somebody who came to look at the product gets one thing to paste into their
-  // assistant, which then does the setup itself.
+  // Nothing on the front door but signing in: no setup guide, no product pitch,
+  // no plans.
   await page.goto(`${server.baseUrl}/login`);
-  await expect(page.getByRole('heading', { name: /paste this into your assistant/i })).toBeVisible();
-  // The block is one line: install the CLI, then read this instance's own
-  // /setup.md and follow it. The long instructions live at that URL.
-  const block = page.locator('pre');
-  await expect(block).toContainText('npm install -g open-artifact');
-  await expect(block).toContainText(`${server.baseUrl}/setup.md`);
+  await expect(page.getByRole('heading', { name: 'Kite' })).toBeVisible();
+  await expect(page.getByLabel('Email address')).toBeFocused();
+  await expect(page.getByRole('heading', { name: /paste this into your assistant/i })).toHaveCount(0);
+  await expect(page.locator('pre')).toHaveCount(0);
+  const text = (await page.locator('body').textContent()) ?? '';
+  expect(text).not.toMatch(/plans|enterprise|self-host|see what it does/i);
 
-  // Somebody who followed a colleague's link came to read, not to be pitched.
-  // Explaining setup on their way in taxes the person who shared it.
+  // Somebody who followed a colleague's link gets the same form, framed for it.
   const artifact = await server.publish({ type: 'markdown', content: '# Quarter in review' });
   await page.goto(`${server.baseUrl}/a/${artifact.slug}`);
 

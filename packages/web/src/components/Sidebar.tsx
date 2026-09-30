@@ -134,7 +134,7 @@ function Sidebar({
           to="/"
           className="rounded-[--radius-sm] px-1.5 py-1 text-[13px] font-semibold tracking-[-0.02em] text-ink transition-colors hover:bg-sunken"
         >
-          Open Artifact
+          Kite
         </Link>
         <button
           type="button"

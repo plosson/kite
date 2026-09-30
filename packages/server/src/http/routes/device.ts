@@ -180,7 +180,7 @@ function explanationFor(state: ApprovalState): string {
     case 'unknown':
       return 'Check the code your terminal is showing, and try the link again.';
     case 'expired':
-      return 'Codes last ten minutes. Run open-artifact login again to get a new one.';
+      return 'Codes last ten minutes. Start the Kite sign-in again to get a new one.';
     case 'already-approved':
       return 'Your terminal should be signed in. You can close this page.';
     case 'already-denied':

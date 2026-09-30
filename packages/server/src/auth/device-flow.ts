@@ -98,7 +98,7 @@ export class DeviceFlowService {
     if (!record) {
       throw new ApiError(
         'unauthenticated',
-        'This sign-in is not one this server knows about. Run `open-artifact login` again.',
+        'This sign-in is not one this server knows about. Start the Kite sign-in again.',
       );
     }
 
@@ -108,7 +108,7 @@ export class DeviceFlowService {
       // something has gone wrong, or someone is replaying it.
       throw new ApiError(
         'unauthenticated',
-        'This sign-in has already been completed. Run `open-artifact login` again.',
+        'This sign-in has already been completed. Start the Kite sign-in again.',
       );
     }
     if (record.expiresAt <= nowIso()) return { state: 'expired' };
@@ -165,7 +165,7 @@ export class DeviceFlowService {
     if (record.expiresAt <= nowIso()) {
       throw new ApiError(
         'validation_failed',
-        'That code has expired. Run `open-artifact login` again to get a new one.',
+        'That code has expired. Start the Kite sign-in again to get a new one.',
       );
     }
     if (record.approvedAt !== null || record.deniedAt !== null) {

@@ -22,7 +22,6 @@ import { endpoints, ApiError, type SignInMethods } from '../api.js';
 import { Button, TextInput, ErrorNote, Field } from '../components/primitives.js';
 import { DocumentSkeleton } from '../components/DocumentSkeleton.js';
 import { CodeInput } from '../components/CodeInput.js';
-import { SetupGuide } from '../components/SetupGuide.js';
 
 type Step = 'email' | 'code';
 
@@ -44,11 +43,10 @@ export function SignIn({ redirectTo }: { redirectTo: string | null }) {
 
   useEffect(() => {
     // The cursor lands where they are going to type. Small, and it is the
-    // difference between arriving and being greeted. Only on the artifact door,
-    // where signing in is the task — on the front door the setup guide leads, so
-    // we do not yank focus down to the secondary sign-in field.
-    if (step === 'email' && arrivedAtAnArtifact) emailField.current?.focus();
-  }, [step, arrivedAtAnArtifact]);
+    // difference between arriving and being greeted. Both doors are sign-in
+    // forms and nothing else, so the field always gets it.
+    if (step === 'email') emailField.current?.focus();
+  }, [step]);
 
   async function requestCode(event: React.FormEvent) {
     event.preventDefault();
@@ -89,8 +87,7 @@ export function SignIn({ redirectTo }: { redirectTo: string | null }) {
   }
 
   // The sign-in controls themselves: email → code, and Google. Shared by the
-  // artifact door (where signing in is the whole task) and the front door (where
-  // it is the quieter "already have an account" path beneath the setup guide).
+  // artifact door and the front door.
   const signInControls = (
     <>
       {step === 'email' ? (
@@ -186,59 +183,23 @@ export function SignIn({ redirectTo }: { redirectTo: string | null }) {
     );
   }
 
-  // The front door. Getting started here is not signing up on the web — it is
-  // pasting the setup line into your assistant, which installs the CLI and signs
-  // you in itself. So the setup guide is the hero, and web sign-in sits below as
-  // the quieter path for people who already have an account.
+  // The front door: a plain sign-in card, nothing else competing with it.
   return (
     <main className="relative min-h-dvh overflow-hidden">
       <div className="relative grid min-h-dvh place-items-center px-5 py-10">
-        <div className="oa-rise w-full max-w-[620px]">
-          <header className="mb-5 px-1">
-            <h1 className="text-[16px] font-semibold">Open Artifact</h1>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-3">
-              Publish and share HTML and Markdown from wherever you work.
-            </p>
-            <a
-              href="https://open-artifact.com/a/i1YDj1u2PnPQJSpeyq5isp13"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-medium text-accent transition-opacity hover:opacity-80"
-            >
-              See what it does, and how it works
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path
-                  d="M6 3.5l4.5 4.5L6 12.5"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </a>
-          </header>
-
+        <div className="oa-rise w-full max-w-[340px]">
           <div className="rounded-[--radius-lg] border border-line bg-surface p-5 shadow-[--shadow-pop]">
-            <SetupGuide instance={typeof window !== 'undefined' ? window.location.origin : ''} />
+            <header className="mb-4">
+              <h1 className="text-[15px]">Kite</h1>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-ink-3">Sign in to continue.</p>
+            </header>
+            {signInControls}
           </div>
-
-          <section className="mt-6 px-1">
-            <h2 className="text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-3">
-              Already have an account?
-            </h2>
-            {/* The form does not want the full width the plans and setup card
-                use, so it keeps a comfortable reading measure of its own. */}
-            <div className="mt-3 max-w-[380px]">{signInControls}</div>
-            {inviteNote}
-          </section>
-
-          <div className="mt-7 px-1">
-            <Plans />
-          </div>
+          {inviteNote && <div className="px-1">{inviteNote}</div>}
 
           {/* Signing in means handing over an address, so what happens to it is
               a link away rather than something to go looking for. */}
-          <footer className="mt-7 flex gap-4 px-1 text-[11.5px] text-ink-3">
+          <footer className="mt-5 flex justify-center gap-4 text-[11.5px] text-ink-3">
             <a href="/privacy" className="transition-opacity hover:opacity-80">
               Privacy
             </a>
@@ -251,119 +212,6 @@ export function SignIn({ redirectTo }: { redirectTo: string | null }) {
     </main>
   );
 }
-
-/**
- * The three ways to run Open Artifact, shown once to a first-time visitor.
- *
- * Cloud is the default and it is free: nothing to run, hosted at
- * open-artifact.com — the same thing the setup line above signs you into.
- * Self-host is also free, for people who want their own server and data.
- * Enterprise is a "talk to us" tier for teams that need sign-in controls,
- * permissions and their own hosting — no prices, because those engagements are
- * quoted, not listed.
- */
-function Plans() {
-  return (
-    <section>
-      <h2 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-3">
-        Plans
-      </h2>
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-        <PlanCard
-          name="Cloud"
-          tagline="Free. Hosted for you."
-          highlight
-          features={[
-            'Nothing to install',
-            'Unlimited artifacts',
-            'Line-level comments',
-            'Share by link or domain',
-          ]}
-        />
-        <PlanCard
-          name="Self-host"
-          tagline="Free. Run it yourself."
-          features={[
-            'Your own server',
-            'Your data stays yours',
-            'Fair-code, source available',
-            'Everything in Cloud',
-          ]}
-        />
-        <PlanCard
-          name="Enterprise"
-          tagline="For teams that need controls."
-          features={['SSO and SAML sign-in', 'Advanced sharing permissions', 'Audit logs', 'Dedicated hosting']}
-          action={
-            <a
-              href="mailto:hello@open-artifact.com?subject=Open%20Artifact%20Enterprise"
-              className="mt-3 flex h-8 w-full items-center justify-center rounded-[--radius] border border-line bg-surface text-[12.5px] font-medium text-ink transition-colors hover:bg-sunken"
-            >
-              Contact us
-            </a>
-          }
-        />
-      </div>
-    </section>
-  );
-}
-
-function PlanCard({
-  name,
-  tagline,
-  features,
-  highlight = false,
-  action,
-}: {
-  name: string;
-  tagline: string;
-  features: string[];
-  highlight?: boolean;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div
-      className={[
-        'flex flex-col rounded-[--radius-lg] border p-3.5',
-        highlight ? 'border-accent/40 bg-accent-wash' : 'border-line bg-surface',
-      ].join(' ')}
-    >
-      <p className="text-[13px] font-semibold text-ink">{name}</p>
-      <p className="mt-0.5 text-[11.5px] text-ink-3">{tagline}</p>
-      <ul className="mt-3 flex flex-col gap-1.5">
-        {features.map((feature) => (
-          <PlanFeature key={feature}>{feature}</PlanFeature>
-        ))}
-      </ul>
-      {action}
-    </div>
-  );
-}
-
-function PlanFeature({ children }: { children: React.ReactNode }) {
-  return (
-    <li className="flex items-start gap-1.5 text-[12px] leading-snug text-ink-2">
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 16 16"
-        fill="none"
-        aria-hidden="true"
-        className="mt-[2px] shrink-0 text-accent"
-      >
-        <path
-          d="M3.5 8.5l3 3 6-7"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span>{children}</span>
-    </li>
-  );
-}
-
 
 function EnterCode({
   email,

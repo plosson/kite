@@ -50,7 +50,7 @@ export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!c.get('user')) {
     throw new ApiError(
       'unauthenticated',
-      'You need to be signed in to do this. Run `open-artifact login`, or sign in in your browser.',
+      'You need to be signed in to Kite to do this. Sign in again, or sign in in your browser.',
     );
   }
   await next();

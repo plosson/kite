@@ -222,6 +222,52 @@ describe('approving in the browser', () => {
   });
 });
 
+describe('naming the product in what the person reads', () => {
+  // Agents treat "artifact" as their own built-in tool, so nothing a client can
+  // pass on from the sign-in may name the open-artifact command line.
+  const namesTheOldCommand = (text: string) => /open-artifact/i.test(text);
+
+  it('does not name it when a device code was never issued', async () => {
+    const body = (await (await poll('a-code-from-nowhere')).json()) as { error: { message: string } };
+    expect(body.error.message).toContain('Kite');
+    expect(namesTheOldCommand(body.error.message)).toBe(false);
+  });
+
+  it('does not name it when a sign-in is replayed', async () => {
+    const started = await startLogin();
+    await approve(started.userCode);
+    await poll(started.deviceCode);
+    const body = (await (await poll(started.deviceCode)).json()) as { error: { message: string } };
+    expect(body.error.message).toContain('Kite');
+    expect(namesTheOldCommand(body.error.message)).toBe(false);
+  });
+
+  it('does not name it when approving an expired code', async () => {
+    const started = await startLogin();
+    server.database.raw
+      .prepare("update device_codes set expires_at = '2020-01-01T00:00:00.000Z'")
+      .run();
+    const body = (await (await approve(started.userCode)).json()) as { error: { message: string } };
+    expect(body.error.message).toContain('Kite');
+    expect(namesTheOldCommand(body.error.message)).toBe(false);
+  });
+
+  it('does not name it on the page for an expired code', async () => {
+    const started = await startLogin();
+    server.database.raw
+      .prepare("update device_codes set expires_at = '2020-01-01T00:00:00.000Z'")
+      .run();
+    const page = await (await person.as(`/auth/device?code=${started.userCode}`)).text();
+    expect(page).toContain('Kite sign-in');
+    expect(namesTheOldCommand(page)).toBe(false);
+  });
+
+  it('does not name it when an API call arrives signed out', async () => {
+    const body = (await (await server.request('/api/artifacts')).json()) as { error: { message: string } };
+    expect(namesTheOldCommand(body.error.message)).toBe(false);
+  });
+});
+
 describe('what the short code is worth on its own', () => {
   it('is nothing: approving it hands the token only to whoever holds the long one', async () => {
     const started = await startLogin();

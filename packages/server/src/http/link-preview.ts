@@ -77,7 +77,7 @@ export function previewFor(artifact: ArtifactDetail, now: string): PreviewCopy {
     title: artifact.title,
     // A public document with nothing readable in it — an empty file, a page of
     // images — falls back to saying what it is rather than showing a blank line.
-    description: description ?? `A ${artifact.type === 'html' ? 'page' : 'document'} on Open Artifact.`,
+    description: description ?? `A ${artifact.type === 'html' ? 'page' : 'document'} on Kite.`,
   };
 }
 

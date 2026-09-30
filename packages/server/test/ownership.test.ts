@@ -135,7 +135,7 @@ describe('nobody signed in at all', () => {
   it('is told how to sign in rather than just refused', async () => {
     const response = await server.request('/api/artifacts');
     const body = (await response.json()) as { error: { message: string } };
-    expect(body.error.message).toContain('open-artifact login');
+    expect(body.error.message).toContain('signed in to Kite');
   });
 });
 

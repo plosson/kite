@@ -88,7 +88,7 @@ describe('what a link preview is allowed to say', () => {
 
   it('falls back to saying what it is when a public document reads as nothing', () => {
     const empty = artifact({ title: 'Untitled artifact', content: '\n\n' });
-    expect(previewFor(empty, NOW).description).toBe('A document on Open Artifact.');
+    expect(previewFor(empty, NOW).description).toBe('A document on Kite.');
   });
 });
 
@@ -286,7 +286,7 @@ describe.runIf(existsSync(resolve(process.cwd(), 'public/index.html')))(
     it('leaves the site’s own card on every other screen', async () => {
       for (const path of ['/', '/settings', '/a/nosuchartifactslughere12']) {
         const html = await cardFor(path);
-        expect(html).toContain('Open Artifact');
+        expect(html).toContain('<title>Kite</title>');
         expect(html).not.toContain(PRIVATE_PREVIEW.title);
       }
     });
