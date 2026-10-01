@@ -9,7 +9,7 @@
 import type { Hono } from 'hono';
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
-import { parseExpiry, isExpired } from '@open-artifact/shared';
+import { parseExpiry, isExpired, INBOX_ID } from '@open-artifact/shared';
 import { nowIso } from '../../time.js';
 import { requireUser, currentUser } from '../session.js';
 import { requireAccess } from '../../artifacts/access.js';
@@ -199,7 +199,7 @@ export function registerSharingRoutes(app: Hono<AppEnv>, context: AppContext): v
         version: artifact.currentVersion,
         url: `${config.baseUrl}/a/${artifact.slug}`,
         starred: starred.has(artifact.id),
-        workspaceId: placements.get(artifact.id) ?? 'inbox',
+        workspaceId: placements.get(artifact.id) ?? INBOX_ID,
         createdAt: artifact.createdAt,
         updatedAt: artifact.updatedAt,
       })),

@@ -125,6 +125,16 @@ export interface ListArtifactsResponse {
 // ---------------------------------------------------------------------------
 
 /**
+ * Inbox is not a workspace row anywhere — the server never stores it, and
+ * nothing created it — but its id, name and description are spoken of in both
+ * the server and the web app, so they live here once rather than as matching
+ * literals kept in sync by hand.
+ */
+export const INBOX_ID = 'inbox';
+export const INBOX_NAME = 'Inbox';
+export const INBOX_DESCRIPTION = 'Kites that are not sorted into a workspace yet.';
+
+/**
  * One of a person's workspaces. Inbox is listed too, with the id "inbox": it is
  * where every kite they have not sorted sits, so it is never empty of meaning
  * even though it is not stored.

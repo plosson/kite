@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { ApiError, endpoints, type WorkspaceSummary } from '../api.js';
+import { INBOX_ID } from '../workspaces.js';
 import { Button, Dialog, Field, TextInput } from './primitives.js';
 
 const DESCRIPTION_HINT = 'Your assistant reads this to decide which new kites go here.';
@@ -184,7 +185,7 @@ export function MoveDialog({
   onClose: () => void;
   onMove: (artifactId: string, workspaceId: string) => void;
 }) {
-  const current = artifact?.workspaceId ?? 'inbox';
+  const current = artifact?.workspaceId ?? INBOX_ID;
   return (
     <Dialog open={artifact !== null} onClose={onClose} title={`Move “${artifact?.title ?? ''}” to…`} width={360}>
       <ul className="flex flex-col">

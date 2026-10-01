@@ -9,16 +9,15 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
-import type { WorkspaceSummary } from '@open-artifact/shared';
+import { INBOX_ID, INBOX_NAME, INBOX_DESCRIPTION, type WorkspaceSummary } from '@open-artifact/shared';
 import type { Db } from '../db/index.js';
 import { workspaces, workspacePlacements, type WorkspaceRow } from '../db/schema.js';
 import { newId } from '../ids.js';
 import { nowIso } from '../time.js';
 import { ApiError, notFound } from '../errors.js';
 
-export const INBOX_ID = 'inbox';
-export const INBOX_NAME = 'Inbox';
-export const INBOX_DESCRIPTION = 'Kites that are not sorted into a workspace yet.';
+// Re-exported so existing imports of these from this module keep working.
+export { INBOX_ID, INBOX_NAME, INBOX_DESCRIPTION };
 
 const MAX_NAME = 60;
 const MAX_DESCRIPTION = 500;

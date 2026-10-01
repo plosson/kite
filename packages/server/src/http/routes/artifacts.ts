@@ -7,6 +7,7 @@
  */
 
 import type { Hono } from 'hono';
+import { INBOX_ID } from '@open-artifact/shared';
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
@@ -116,7 +117,7 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
       artifacts: artifacts.listOwnedBy(userId).map((artifact) => ({
         ...withUrl(artifact, config.baseUrl),
         starred: starred.has(artifact.id),
-        workspaceId: placements.get(artifact.id) ?? 'inbox',
+        workspaceId: placements.get(artifact.id) ?? INBOX_ID,
       })),
     });
   });
