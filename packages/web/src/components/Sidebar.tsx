@@ -566,11 +566,16 @@ function TypeIcon({ type }: { type: 'markdown' | 'html' }) {
   );
 }
 
-function PanelIcon() {
+/** A window with a pane down one side: the side the panel it toggles sits on. */
+export function PanelIcon({ side = 'left' }: { side?: 'left' | 'right' }) {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M6.25 2.75v10.5" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d={side === 'left' ? 'M6.25 2.75v10.5' : 'M9.75 2.75v10.5'}
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
     </svg>
   );
 }

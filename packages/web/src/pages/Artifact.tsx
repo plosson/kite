@@ -36,7 +36,12 @@ import { useRouter, Link } from '../router.jsx';
 import { Button, Badge, RelativeTime, Spinner, Dialog } from '../components/primitives.js';
 import { ShareDialog } from '../components/ShareDialog.js';
 import { ThemeControl } from '../components/ThemeControl.js';
-import { CommentsPanel, Composer, useMentionCandidates } from '../components/Comments.js';
+import {
+  CommentsPanel,
+  Composer,
+  useCommentsCollapsed,
+  useMentionCandidates,
+} from '../components/Comments.js';
 import { readSelection, locatePassage, type SelectedPassage } from '../components/selection.js';
 import { BlockEditor } from '../components/BlockEditor.js';
 import {
@@ -61,7 +66,7 @@ export function Artifact({ slug }: { slug: string }) {
   const { artifact, setArtifact, missing, expired } = useArtifact(slug);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [showComments, setShowComments] = useState(true);
+  const [commentsCollapsed, toggleComments] = useCommentsCollapsed();
   const [editing, setEditing] = useState(false);
   const [fullSource, setFullSource] = useState(false);
   /**
@@ -101,8 +106,8 @@ export function Artifact({ slug }: { slug: string }) {
 
         <Button
           size="sm"
-          tone={showComments ? 'default' : 'ghost'}
-          onClick={() => setShowComments((shown) => !shown)}
+          tone={commentsCollapsed ? 'ghost' : 'default'}
+          onClick={toggleComments}
         >
           Comments
           {conversation.openCount > 0 && (
@@ -178,21 +183,21 @@ export function Artifact({ slug }: { slug: string }) {
           }}
         />
 
-        {showComments && (
-          <CommentsPanel
-            artifactId={artifact.id}
-            threads={conversation.threads}
-            loading={conversation.loading}
-            canComment={conversation.canComment}
-            currentUserId={user.id}
-            isArtifactOwner={isOwner}
-            activeThreadId={conversation.activeThreadId}
-            revealCount={conversation.revealCount}
-            onFocusThread={conversation.focusThread}
-            onRevealThread={conversation.revealThread}
-            onChanged={conversation.reload}
-          />
-        )}
+        <CommentsPanel
+          artifactId={artifact.id}
+          threads={conversation.threads}
+          loading={conversation.loading}
+          canComment={conversation.canComment}
+          currentUserId={user.id}
+          isArtifactOwner={isOwner}
+          activeThreadId={conversation.activeThreadId}
+          revealCount={conversation.revealCount}
+          onFocusThread={conversation.focusThread}
+          onRevealThread={conversation.revealThread}
+          onChanged={conversation.reload}
+          collapsed={commentsCollapsed}
+          onToggle={toggleComments}
+        />
       </div>
 
       {isOwner && (
@@ -247,7 +252,7 @@ export function PublicArtifact({
   // grants to everyone.
   const conversation = useComments(artifact.id, false);
   useLinkedThread(conversation.threads, conversation.revealThread);
-  const [showComments, setShowComments] = useState(true);
+  const [commentsCollapsed, toggleComments] = useCommentsCollapsed();
 
   return (
     <div className="flex h-dvh flex-col">
@@ -262,8 +267,8 @@ export function PublicArtifact({
 
         <Button
           size="sm"
-          tone={showComments ? 'default' : 'ghost'}
-          onClick={() => setShowComments((shown) => !shown)}
+          tone={commentsCollapsed ? 'ghost' : 'default'}
+          onClick={toggleComments}
         >
           Comments
           {conversation.openCount > 0 && (
@@ -288,23 +293,23 @@ export function PublicArtifact({
           publishCta
         />
 
-        {showComments && (
-          <CommentsPanel
-            artifactId={artifact.id}
-            threads={conversation.threads}
-            loading={conversation.loading}
-            canComment={false}
-            currentUserId=""
-            isArtifactOwner={false}
-            activeThreadId={conversation.activeThreadId}
-            revealCount={conversation.revealCount}
-            onFocusThread={conversation.focusThread}
-            onRevealThread={conversation.revealThread}
-            onChanged={conversation.reload}
-            onSignIn={onSignIn}
-            setupInstance={typeof window !== 'undefined' ? window.location.origin : ''}
-          />
-        )}
+        <CommentsPanel
+          artifactId={artifact.id}
+          threads={conversation.threads}
+          loading={conversation.loading}
+          canComment={false}
+          currentUserId=""
+          isArtifactOwner={false}
+          activeThreadId={conversation.activeThreadId}
+          revealCount={conversation.revealCount}
+          onFocusThread={conversation.focusThread}
+          onRevealThread={conversation.revealThread}
+          onChanged={conversation.reload}
+          onSignIn={onSignIn}
+          setupInstance={typeof window !== 'undefined' ? window.location.origin : ''}
+          collapsed={commentsCollapsed}
+          onToggle={toggleComments}
+        />
       </div>
     </div>
   );
