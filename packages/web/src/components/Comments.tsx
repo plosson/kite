@@ -9,13 +9,16 @@
  * Resolved threads collapse rather than disappear. Somebody scrolling back
  * wants to see that a question was asked and answered; hiding it makes the
  * document look like nobody ever queried anything.
+ *
+ * Like the sidebar on the other edge, it collapses to a thin rail that one click
+ * opens again, and that choice is remembered per person.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import type { CommentThread, Comment as CommentRecord } from '@open-artifact/shared';
 import { endpoints, ApiError, type MentionCandidate, type MentionOutcome } from '../api.js';
 import { Button, Badge, RelativeTime, Spinner, ErrorNote } from './primitives.js';
-import { Avatar } from './Sidebar.js';
+import { Avatar, PanelIcon } from './Sidebar.js';
 import { setupPrompt } from './SetupGuide.js';
 
 export interface CommentsPanelProps {
@@ -51,6 +54,36 @@ export interface CommentsPanelProps {
    * to paste into an assistant — and demotes sign-in to a link beneath it.
    */
   setupInstance?: string;
+  /** Folded down to a rail at the edge of the window. */
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+const COLLAPSE_PREFERENCE = 'oa.comments.collapsed';
+
+/** Whether the comments panel is folded away, remembered the way the sidebar is. */
+export function useCommentsCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_PREFERENCE) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  function toggle() {
+    setCollapsed((wasCollapsed) => {
+      const next = !wasCollapsed;
+      try {
+        localStorage.setItem(COLLAPSE_PREFERENCE, String(next));
+      } catch {
+        // Private browsing refuses this. Not remembering is a small loss.
+      }
+      return next;
+    });
+  }
+
+  return [collapsed, toggle];
 }
 
 export function CommentsPanel({
@@ -67,6 +100,8 @@ export function CommentsPanel({
   onChanged,
   onSignIn,
   setupInstance,
+  collapsed,
+  onToggle,
 }: CommentsPanelProps) {
   const [showResolved, setShowResolved] = useState(false);
   const candidates = useMentionCandidates(artifactId, canComment);
@@ -99,15 +134,42 @@ export function CommentsPanel({
     // 'nearest' so pressing the quote on a card already in view does not shuffle
     // the panel about for no reason.
     card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [revealCount, activeThreadId, showResolved, threads]);
+  }, [revealCount, activeThreadId, showResolved, threads, collapsed]);
+
+  if (collapsed) {
+    return (
+      <aside className="flex h-full w-11 shrink-0 flex-col items-center gap-1 border-l border-line bg-canvas py-2.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Show comments"
+          aria-expanded={false}
+          className="grid size-7 place-items-center rounded-[--radius-sm] text-ink-3 transition-colors hover:bg-sunken hover:text-ink"
+        >
+          <PanelIcon side="right" />
+        </button>
+      </aside>
+    );
+  }
 
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col border-l border-line bg-canvas">
-      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-line px-3.5">
+    <aside className="oa-fade flex h-full w-[320px] shrink-0 flex-col border-l border-line bg-canvas">
+      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-line pl-3.5 pr-2.5">
         <h2 className="text-[12px] font-semibold uppercase tracking-[0.05em] text-ink-3">
           Comments
         </h2>
-        {loading && <Spinner className="text-ink-3" />}
+        <div className="flex items-center gap-1">
+          {loading && <Spinner className="text-ink-3" />}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label="Hide comments"
+            aria-expanded
+            className="grid size-7 place-items-center rounded-[--radius-sm] text-ink-3 transition-colors hover:bg-sunken hover:text-ink"
+          >
+            <PanelIcon side="right" />
+          </button>
+        </div>
       </header>
 
       <div ref={list} className="oa-scroll min-h-0 flex-1 overflow-y-auto px-2.5 py-2.5">
