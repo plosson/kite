@@ -8,7 +8,7 @@
  * moving a kite to Inbox deletes its placement rather than writing one.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { INBOX_ID, INBOX_NAME, INBOX_DESCRIPTION, type WorkspaceSummary } from '@open-artifact/shared';
 import type { Db } from '../db/index.js';
 import { workspaces, workspacePlacements, type WorkspaceRow } from '../db/schema.js';
@@ -57,7 +57,12 @@ export class WorkspaceService {
 
     const timestamp = nowIso();
     const row = { id: newId('ws'), userId, name, description, createdAt: timestamp, updatedAt: timestamp };
-    this.db.insert(workspaces).values(row).run();
+    try {
+      this.db.insert(workspaces).values(row).run();
+    } catch (error) {
+      if (isUniqueNameViolation(error)) throw duplicateName(name);
+      throw error;
+    }
     return { id: row.id, name, description, count: 0 };
   }
 
@@ -74,11 +79,16 @@ export class WorkspaceService {
         : requireText(input.description, 'description', MAX_DESCRIPTION);
     this.requireFreeName(userId, name, existing.id);
 
-    this.db
-      .update(workspaces)
-      .set({ name, description, updatedAt: nowIso() })
-      .where(eq(workspaces.id, existing.id))
-      .run();
+    try {
+      this.db
+        .update(workspaces)
+        .set({ name, description, updatedAt: nowIso() })
+        .where(eq(workspaces.id, existing.id))
+        .run();
+    } catch (error) {
+      if (isUniqueNameViolation(error)) throw duplicateName(name);
+      throw error;
+    }
     return { id: existing.id, name, description, count: 0 };
   }
 
@@ -117,12 +127,12 @@ export class WorkspaceService {
   /** By id, or by name with case and surrounding spaces ignored. "inbox" is always Inbox. */
   resolve(userId: string, idOrName: string): { id: string; name: string } {
     const wanted = idOrName.trim();
-    if (wanted.toLowerCase() === INBOX_ID) return { id: INBOX_ID, name: INBOX_NAME };
+    if (normaliseName(wanted) === INBOX_ID) return { id: INBOX_ID, name: INBOX_NAME };
 
     const rows = this.rowsFor(userId);
     const match =
       rows.find((row) => row.id === wanted) ??
-      rows.find((row) => row.name.toLowerCase() === wanted.toLowerCase());
+      rows.find((row) => normaliseName(row.name) === normaliseName(wanted));
     if (!match) throw notFound('workspace');
     return { id: match.id, name: match.name };
   }
@@ -154,19 +164,49 @@ export class WorkspaceService {
     return row;
   }
 
+  /**
+   * Compared in JS, over this person's own (small) set of rows, rather than
+   * with SQLite's `lower()` in the query: `lower()` is ASCII-only, so it would
+   * wave "Études" through as different from itself were it ever given a
+   * different-case match to find, and miss "études" beside "Études" too.
+   */
   private requireFreeName(userId: string, name: string, exceptId: string | null): void {
-    if (name.toLowerCase() === INBOX_ID) {
+    if (normaliseName(name) === INBOX_ID) {
       throw new ApiError('name_taken', '"Inbox" is built in. Choose another name.');
     }
-    const clash = this.db
-      .select({ id: workspaces.id })
-      .from(workspaces)
-      .where(and(eq(workspaces.userId, userId), eq(sql`lower(${workspaces.name})`, name.toLowerCase())))
-      .get();
+    const clash = this.rowsFor(userId).find((row) => normaliseName(row.name) === normaliseName(name));
     if (clash && clash.id !== exceptId) {
-      throw new ApiError('name_taken', `You already have a workspace called "${name}".`);
+      throw duplicateName(name);
     }
   }
+}
+
+/**
+ * The same name, as far as a duplicate check cares: composed (not decomposed)
+ * and case-folded. Used for the reserved name, the duplicate check and
+ * resolving by name, so all three agree on what counts as "the same".
+ */
+function normaliseName(name: string): string {
+  return name.normalize('NFC').toLowerCase();
+}
+
+function duplicateName(name: string): ApiError {
+  return new ApiError('name_taken', `You already have a workspace called "${name}".`);
+}
+
+/**
+ * The JS-side check above is the real guard; this is a backstop for the rare
+ * race the JS check cannot see (two requests from the same person at once).
+ * The unique index stays `lower()`-based, an ASCII backstop of its own, so a
+ * violation here is reported the same way the JS check would have.
+ */
+function isUniqueNameViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'SQLITE_CONSTRAINT_UNIQUE'
+  );
 }
 
 function requireText(value: unknown, field: 'name' | 'description', max: number): string {

@@ -102,6 +102,34 @@ describe('names', () => {
     expect(codeOf(() => service.update('usr_a', research.id, { name: 'ADMIN' }))).toBe('name_taken');
     expect(service.update('usr_a', research.id, { name: 'RESEARCH' }).name).toBe('RESEARCH');
   });
+
+  it('refuses an exact duplicate with accents, rather than crashing', () => {
+    service.create('usr_a', { name: 'Études', description: 'Papers' });
+    expect(codeOf(() => service.create('usr_a', { name: 'Études', description: 'x' }))).toBe('name_taken');
+  });
+
+  it('refuses a duplicate that differs only in the case of an accented letter', () => {
+    service.create('usr_a', { name: 'Études', description: 'Papers' });
+    expect(codeOf(() => service.create('usr_a', { name: 'études', description: 'x' }))).toBe('name_taken');
+  });
+
+  it('resolves an accented name regardless of case', () => {
+    const etudes = service.create('usr_a', { name: 'Études', description: 'Papers' });
+    expect(service.resolve('usr_a', 'études').id).toBe(etudes.id);
+  });
+
+  it('refuses a rename onto the reserved name in any case', () => {
+    const research = service.create('usr_a', { name: 'Research', description: 'Papers' });
+    for (const name of ['Inbox', 'inbox', 'INBOX']) {
+      expect(codeOf(() => service.update('usr_a', research.id, { name })), name).toBe('name_taken');
+    }
+  });
+
+  it('accepts a name of exactly 60 characters and a description of exactly 500', () => {
+    const created = service.create('usr_a', { name: 'a'.repeat(60), description: 'd'.repeat(500) });
+    expect(created.name).toHaveLength(60);
+    expect(created.description).toHaveLength(500);
+  });
 });
 
 describe('ownership', () => {
