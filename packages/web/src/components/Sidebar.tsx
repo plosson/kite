@@ -370,23 +370,26 @@ function WorkspaceSection({
       }}
     >
       <div className="group/header flex items-center gap-1 px-1.5 py-1">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={!collapsed}
-          title={workspace.description || undefined}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-        >
-          <Chevron open={!collapsed} />
-          <h2 className="truncate text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-3">
-            {workspace.name}
-          </h2>
-          {loading ? (
-            <Spinner className="text-ink-3" />
-          ) : (
-            workspace.count > 0 && <span className="text-[11px] tabular-nums text-ink-3">{workspace.count}</span>
-          )}
-        </button>
+        {/* The heading for screen readers wraps the toggle, rather than sitting
+            inside it: a heading inside a button is not a heading at all, since
+            an interactive descendant has no accessible role of its own there. */}
+        <h2 className="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-3">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            title={workspace.description || undefined}
+            className="flex w-full items-center gap-1.5 text-left"
+          >
+            <Chevron open={!collapsed} />
+            <span className="truncate">{workspace.name}</span>
+            {loading ? (
+              <Spinner className="text-ink-3" />
+            ) : (
+              workspace.count > 0 && <span className="tabular-nums">{workspace.count}</span>
+            )}
+          </button>
+        </h2>
         {onEdit && (
           <button
             type="button"
