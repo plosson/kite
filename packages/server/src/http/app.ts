@@ -14,6 +14,7 @@ import { ArtifactService } from '../artifacts/service.js';
 import { ApiError } from '../errors.js';
 import { type Logger, silentLogger } from '../logging.js';
 import { registerArtifactRoutes } from './routes/artifacts.js';
+import { registerWorkspaceRoutes } from './routes/workspaces.js';
 import { registerViewRoutes } from './routes/view.js';
 import { registerLeavingRoutes } from './routes/leaving.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -31,6 +32,7 @@ import { registerOAuthRoutes } from './routes/oauth.js';
 import { NotificationService } from '../notifications/service.js';
 import { CommentService } from '../comments/service.js';
 import { SharingService } from '../artifacts/sharing.js';
+import { WorkspaceService } from '../workspaces/service.js';
 import { buildOpenApiDocument } from './openapi.js';
 import { AuthService } from '../auth/service.js';
 import { OAuthService } from '../auth/oauth.js';
@@ -63,6 +65,7 @@ export interface AppContext {
   auth: AuthService;
   devices: DeviceFlowService;
   sharing: SharingService;
+  workspaces: WorkspaceService;
   comments: CommentService;
   notifications: NotificationService;
   oauth: OAuthService;
@@ -126,6 +129,7 @@ export function createApp({
     }),
     auth,
     sharing,
+    workspaces: new WorkspaceService(database.db),
     comments,
     notifications,
     oauth: new OAuthService({ db: database.db, auth }),
@@ -165,6 +169,7 @@ export function createApp({
   registerDeviceRoutes(app, context);
   registerAccountRoutes(app, context);
   registerArtifactRoutes(app, context);
+  registerWorkspaceRoutes(app, context);
   registerSharingRoutes(app, context);
   registerCommentRoutes(app, context);
   registerNotificationRoutes(app, context);

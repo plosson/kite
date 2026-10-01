@@ -6,7 +6,7 @@
  * can read, against a dependency that would need keeping current for years.
  */
 
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext, type AnchorHTMLAttributes } from 'react';
 
 interface Route {
   path: string;
@@ -64,11 +64,12 @@ export function Link({
   to,
   children,
   className,
+  ...rest
 }: {
   to: string;
   children: React.ReactNode;
   className?: string;
-}) {
+} & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href' | 'onClick' | 'children' | 'className'>) {
   const { navigate } = useRouter();
 
   return (
@@ -82,6 +83,7 @@ export function Link({
         event.preventDefault();
         navigate(to);
       }}
+      {...rest}
     >
       {children}
     </a>

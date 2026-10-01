@@ -131,6 +131,7 @@ export function registerMcpRoutes(app: Hono<AppEnv>, context: AppContext): void 
     const toolContext: McpToolContext = {
       artifacts: context.artifacts,
       sharing: context.sharing,
+      workspaces: context.workspaces,
       comments: context.comments,
       notifications: context.notifications,
       mailer: context.mailer,

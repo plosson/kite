@@ -10,7 +10,7 @@ import {
 import { artifacts, apiTokens } from '../src/db/schema.js';
 
 /**
- * The eight MCP tools, and the scoping that makes them safe.
+ * The MCP tools, and the scoping that makes them safe.
  *
  * The property under test throughout: a connection sees and touches only what it
  * published. A CLI or web document is invisible, and the refusal says why. The

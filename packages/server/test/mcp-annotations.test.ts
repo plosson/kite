@@ -22,7 +22,7 @@ const byName = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
 describe('every tool is annotated', () => {
   it('carries all five flags and a title', () => {
-    expect(TOOLS).toHaveLength(8);
+    expect(TOOLS).toHaveLength(10);
     for (const tool of TOOLS) {
       expect(tool.title, `${tool.name} has no title`).toBeTruthy();
       expect(tool.annotations.title).toBe(tool.title);
@@ -57,7 +57,7 @@ describe('every tool is annotated', () => {
 
 describe('what the flags claim, tool by tool', () => {
   it('marks the four readers read-only', () => {
-    for (const name of ['get_artifact', 'list_artifacts', 'list_comments']) {
+    for (const name of ['get_artifact', 'list_artifacts', 'list_comments', 'list_workspaces']) {
       expect(byName.get(name)?.annotations.readOnlyHint, name).toBe(true);
     }
   });
@@ -69,6 +69,7 @@ describe('what the flags claim, tool by tool', () => {
       'share_artifact',
       'reply_to_comment',
       'resolve_comment_thread',
+      'create_workspace',
     ]) {
       expect(byName.get(name)?.annotations.readOnlyHint, name).toBe(false);
     }
@@ -90,5 +91,6 @@ describe('what the flags claim, tool by tool', () => {
     // Publishing twice makes two pages; replying twice makes two replies.
     expect(byName.get('publish_artifact')?.annotations.idempotentHint).toBe(false);
     expect(byName.get('reply_to_comment')?.annotations.idempotentHint).toBe(false);
+    expect(byName.get('create_workspace')?.annotations.idempotentHint).toBe(false);
   });
 });

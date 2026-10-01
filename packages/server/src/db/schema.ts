@@ -10,6 +10,7 @@
  */
 
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 /**
  * People. Email is the identity key: signing in by email link and by Google with
@@ -352,6 +353,60 @@ export const artifactStars = sqliteTable(
   (table) => [
     uniqueIndex('artifact_stars_user_artifact_idx').on(table.userId, table.artifactId),
     index('artifact_stars_user_idx').on(table.userId),
+  ],
+);
+
+/**
+ * A person's workspaces: one level of folders for sorting their own view.
+ *
+ * A workspace belongs to one person and is seen by nobody else. It grants
+ * nothing; sharing stays per artifact. Inbox is not a row — it is where a kite
+ * with no placement sits — so there is nothing to backfill and nothing to create
+ * when somebody signs up or is shared something.
+ */
+export const workspaces = sqliteTable(
+  'workspaces',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** What belongs in it, in the person's words. Assistants read it to sort new kites. */
+    description: text('description').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    // One "Research" per person, whatever the case.
+    uniqueIndex('workspaces_user_name_idx').on(table.userId, sql`lower(${table.name})`),
+  ],
+);
+
+/**
+ * Where one person has put one kite. Each person places a kite independently, so
+ * the owner and a reader can file the same kite differently. Deleting the
+ * workspace, the kite or the person takes the placement with it, which puts the
+ * kite back in Inbox.
+ */
+export const workspacePlacements = sqliteTable(
+  'workspace_placements',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    artifactId: text('artifact_id')
+      .notNull()
+      .references(() => artifacts.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('workspace_placements_user_artifact_idx').on(table.userId, table.artifactId),
+    index('workspace_placements_workspace_idx').on(table.workspaceId),
   ],
 );
 
@@ -723,6 +778,8 @@ export type CommentRow = typeof comments.$inferSelect;
 export type DeviceCodeRow = typeof deviceCodes.$inferSelect;
 export type ArtifactShareRow = typeof artifactShares.$inferSelect;
 export type ArtifactStarRow = typeof artifactStars.$inferSelect;
+export type WorkspaceRow = typeof workspaces.$inferSelect;
+export type WorkspacePlacementRow = typeof workspacePlacements.$inferSelect;
 export type ArtifactDomainShareRow = typeof artifactDomainShares.$inferSelect;
 export type AuthSessionRow = typeof authSessions.$inferSelect;
 export type ApiTokenRow = typeof apiTokens.$inferSelect;

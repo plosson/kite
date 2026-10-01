@@ -113,7 +113,7 @@ test('starring an artifact pins it to its own sidebar section', async ({ page, c
   await expect(bar.getByRole('button', { name: 'Remove star' })).toBeVisible();
 
   // Open the sidebar: the artifact now sits under a Starred heading, as well as
-  // in Yours — so its link appears twice.
+  // in its workspace (Inbox) — so its link appears twice.
   await page.getByRole('button', { name: 'Show sidebar' }).click();
   const sidebar = page.getByRole('complementary');
   await expect(sidebar.getByText('Starred')).toBeVisible();

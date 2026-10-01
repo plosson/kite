@@ -7,6 +7,7 @@
  */
 
 import type { Hono } from 'hono';
+import { INBOX_ID } from '@open-artifact/shared';
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
@@ -15,7 +16,7 @@ import { requireAccess, canAccess } from '../../artifacts/access.js';
 import type { ArtifactDetail, ArtifactSummary } from '../../artifacts/service.js';
 
 export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): void {
-  const { artifacts, sharing, config , rateLimiter } = context;
+  const { artifacts, sharing, workspaces, config, rateLimiter } = context;
 
   // Refuse an enormous body before it is buffered, rather than after. The size
   // check on parsed content cannot protect the process it already filled.
@@ -33,12 +34,19 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
   /** Publish a new artifact. It belongs to whoever published it. */
   app.post('/api/artifacts', requireUser, publishLimit, async (c) => {
     const body = await readJsonObject(c.req.raw, bodyCap);
+    const ownerId = currentUser(c).id;
+    // Resolved before anything is written, so an unknown or foreign workspace
+    // refuses the whole publish instead of leaving a kite in the wrong place.
+    const workspaceId = optionalString(body, 'workspaceId');
+    const target = workspaceId === undefined ? null : workspaces.resolve(ownerId, workspaceId);
+
     const created = artifacts.create({
-      ownerId: currentUser(c).id,
+      ownerId,
       type: requireString(body, 'type'),
       content: requireString(body, 'content'),
       title: optionalString(body, 'title'),
     });
+    if (target) workspaces.place(ownerId, created.id, target.id);
     return c.json(withUrl(created, config.baseUrl), 201);
   });
 
@@ -104,10 +112,12 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
   app.get('/api/artifacts', requireUser, (c) => {
     const userId = currentUser(c).id;
     const starred = artifacts.starredArtifactIdsFor(userId);
+    const placements = workspaces.placementsFor(userId);
     return c.json({
       artifacts: artifacts.listOwnedBy(userId).map((artifact) => ({
         ...withUrl(artifact, config.baseUrl),
         starred: starred.has(artifact.id),
+        workspaceId: placements.get(artifact.id) ?? INBOX_ID,
       })),
     });
   });

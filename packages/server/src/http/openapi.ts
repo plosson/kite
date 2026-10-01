@@ -308,12 +308,14 @@ export const API_OPERATIONS: Record<string, Operation> = {
 
   'POST /api/artifacts': {
     summary: 'Publish an artifact',
-    description: 'Markdown or HTML. The artifact belongs to whoever published it.',
+    description:
+      'Markdown or HTML. The artifact belongs to whoever published it. Optional `workspaceId` (a workspace id or name, or "inbox") places it in one of your workspaces; an unknown one refuses the publish.',
     auth: 'required',
     responses: {
       '201': 'Published',
       '400': 'Bad request, or a type that cannot be rendered safely',
       '401': 'Not signed in',
+      '404': 'No such workspace',
       '413': 'Larger than this instance allows',
     },
   },
@@ -370,6 +372,58 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '200': 'Not starred',
       '401': 'Not signed in',
       '404': 'No such artifact, or you cannot see it',
+    },
+  },
+  'PUT /api/artifacts/:id/workspace': {
+    summary: 'Move an artifact into one of your workspaces',
+    description:
+      'Send `workspaceId`: one of your workspace ids, or "inbox". Private to you and grants nothing, so it needs only that you can see the artifact. Each person places an artifact independently.',
+    auth: 'required',
+    responses: {
+      '200': 'Moved',
+      '400': 'workspaceId is missing',
+      '401': 'Not signed in',
+      '404': 'No such artifact or workspace, or you cannot see it',
+    },
+  },
+  'GET /api/workspaces': {
+    summary: 'List your workspaces',
+    description:
+      'Inbox first, then your workspaces by name. Each has a description of what belongs in it, which an assistant reads to decide where a new artifact goes.',
+    auth: 'required',
+    responses: { '200': 'Your workspaces', '401': 'Not signed in' },
+  },
+  'POST /api/workspaces': {
+    summary: 'Create a workspace',
+    description: 'Send `name` (at most 60 characters) and `description` (at most 500). "Inbox" is reserved.',
+    auth: 'required',
+    responses: {
+      '201': 'Created',
+      '400': 'Name or description missing or too long',
+      '401': 'Not signed in',
+      '409': 'You already have a workspace with that name',
+    },
+  },
+  'PATCH /api/workspaces/:id': {
+    summary: 'Rename a workspace or change its description',
+    auth: 'required',
+    responses: {
+      '200': 'Changed',
+      '400': 'Inbox cannot be changed, or a field is missing or too long',
+      '401': 'Not signed in',
+      '404': 'No such workspace',
+      '409': 'You already have a workspace with that name',
+    },
+  },
+  'DELETE /api/workspaces/:id': {
+    summary: 'Delete a workspace',
+    description: 'Its artifacts go back to Inbox. No artifact is deleted.',
+    auth: 'required',
+    responses: {
+      '200': 'Deleted',
+      '400': 'Inbox cannot be deleted',
+      '401': 'Not signed in',
+      '404': 'No such workspace',
     },
   },
 

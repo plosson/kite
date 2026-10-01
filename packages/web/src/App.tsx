@@ -18,6 +18,7 @@ import {
   type ArtifactSummary,
   type SharedArtifact,
   type ExpiredLink,
+  type WorkspaceSummary,
 } from './api.js';
 import { Router, useRouter } from './router.jsx';
 import { SignIn } from './pages/SignIn.jsx';
@@ -108,18 +109,21 @@ function Shell() {
 function SignedIn({ path }: { path: string }) {
   const [mine, setMine] = useState<ArtifactSummary[]>([]);
   const [shared, setShared] = useState<SharedArtifact[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const stars = useStars();
 
   const load = useCallback(() => {
     setFailed(false);
     setLoading(true);
 
-    Promise.all([endpoints.myArtifacts(), endpoints.sharedWithMe()])
-      .then(([owned, sharedWithMe]) => {
+    Promise.all([endpoints.myArtifacts(), endpoints.sharedWithMe(), endpoints.workspaces()])
+      .then(([owned, sharedWithMe, listed]) => {
         setMine(owned.artifacts);
         setShared(sharedWithMe.artifacts);
+        setWorkspaces(listed.workspaces);
         // Bring the shared star state into line with what the server just said.
         stars.reconcile(
           [...owned.artifacts, ...sharedWithMe.artifacts].map((artifact) => ({
@@ -134,14 +138,62 @@ function SignedIn({ path }: { path: string }) {
 
   useEffect(load, [load]);
 
+  // Workspaces alone, after one is created, renamed or deleted. A delete also
+  // moves kites back to Inbox on the server, so the listings are reloaded too.
+  const reloadWorkspaces = useCallback(() => load(), [load]);
+
+  /**
+   * Moves a kite at once and tells the server after. If the server refuses —
+   * the workspace was deleted in another tab, say — there is no locally
+   * captured "previous" to roll back to: a second move of the same kite before
+   * the first request lands would make that value stale, and restoring it
+   * would clobber the second move. Instead the listings are reloaded from the
+   * server, which is the source of truth, and the person is told.
+   */
+  const move = useCallback(
+    (artifactId: string, workspaceId: string) => {
+      const apply = <T extends { id: string; workspaceId?: string }>(list: T[]) =>
+        list.map((artifact) =>
+          artifact.id === artifactId ? { ...artifact, workspaceId } : artifact,
+        );
+      setMine(apply);
+      setShared(apply);
+
+      endpoints.moveArtifact(artifactId, workspaceId).catch((error: unknown) => {
+        setMoveError(error instanceof Error ? error.message : 'Could not move it.');
+        load();
+      });
+    },
+    [load],
+  );
+
   const artifactSlug = path.startsWith('/a/') ? decodeURIComponent(path.slice(3)) : null;
 
   return (
-    <AppFrame data={{ mine, shared, loading }} focusMode={artifactSlug !== null}>
+    <AppFrame
+      data={{
+        mine,
+        shared,
+        workspaces,
+        loading,
+        onMove: move,
+        onWorkspacesChanged: reloadWorkspaces,
+        moveError,
+        onDismissMoveError: () => setMoveError(null),
+      }}
+      focusMode={artifactSlug !== null}
+    >
       {artifactSlug !== null ? (
         <Artifact slug={artifactSlug} />
       ) : path === '/' || path === '/login' ? (
-        <Home mine={mine} shared={shared} loading={loading} failed={failed} onRetry={load} />
+        <Home
+          mine={mine}
+          shared={shared}
+          workspaces={workspaces}
+          loading={loading}
+          failed={failed}
+          onRetry={load}
+        />
       ) : path === '/settings/sessions' ? (
         <Sessions />
       ) : (

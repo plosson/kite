@@ -29,6 +29,7 @@ export const API_ERROR_CODES = [
   'unsupported_type',
   'payload_too_large',
   'version_conflict',
+  'name_taken',
   'rate_limited',
   'internal_error',
 ] as const;
@@ -72,6 +73,11 @@ export interface ArtifactSummary {
    * per-person bookmark has no meaning.
    */
   starred?: boolean;
+  /**
+   * Which of the asking person's workspaces holds it: a workspace id, or
+   * "inbox". Present only on the two listings the web app reads.
+   */
+  workspaceId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -112,6 +118,38 @@ export interface UpdateArtifactRequest {
 
 export interface ListArtifactsResponse {
   artifacts: ArtifactSummary[];
+}
+
+// ---------------------------------------------------------------------------
+// Workspaces
+// ---------------------------------------------------------------------------
+
+/**
+ * Inbox is not a workspace row anywhere — the server never stores it, and
+ * nothing created it — but its id, name and description are spoken of in both
+ * the server and the web app, so they live here once rather than as matching
+ * literals kept in sync by hand.
+ */
+export const INBOX_ID = 'inbox';
+export const INBOX_NAME = 'Inbox';
+export const INBOX_DESCRIPTION = 'Kites that are not sorted into a workspace yet.';
+
+/**
+ * One of a person's workspaces. Inbox is listed too, with the id "inbox": it is
+ * where every kite they have not sorted sits, so it is never empty of meaning
+ * even though it is not stored.
+ */
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  /** What belongs in it. An assistant reads this to decide where a new kite goes. */
+  description: string;
+  /** How many kites in it this person can currently see. */
+  count: number;
+}
+
+export interface ListWorkspacesResponse {
+  workspaces: WorkspaceSummary[];
 }
 
 // ---------------------------------------------------------------------------
