@@ -79,7 +79,7 @@ test('deleting a workspace puts its kites back in Inbox and deletes none', async
   await section(page, doomed).hover();
   await page.getByRole('button', { name: 'Edit workspace Doomed' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-  await expect(page.getByText('Its 1 kite move to Inbox. No kite is deleted.')).toBeVisible();
+  await expect(page.getByText('Its 1 kite moves to Inbox. No kite is deleted.')).toBeVisible();
   await page.getByRole('button', { name: 'Delete workspace' }).click();
 
   await expect(section(page, doomed)).toHaveCount(0);

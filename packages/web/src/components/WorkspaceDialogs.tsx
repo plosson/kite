@@ -92,7 +92,7 @@ export function WorkspaceDialog({
         open={open}
         onClose={() => setConfirmingDelete(false)}
         title={`Delete ${workspace.name}?`}
-        description={`Its ${count} kite${count === 1 ? '' : 's'} move to Inbox. No kite is deleted.`}
+        description={`Its ${count} kite${count === 1 ? '' : 's'} ${count === 1 ? 'moves' : 'move'} to Inbox. No kite is deleted.`}
         footer={
           <>
             <Button size="sm" onClick={() => setConfirmingDelete(false)} disabled={busy}>
