@@ -181,6 +181,7 @@ export function registerSharingRoutes(app: Hono<AppEnv>, context: AppContext): v
   app.get('/api/shared-with-me', requireUser, (c) => {
     const user = currentUser(c);
     const starred = artifacts.starredArtifactIdsFor(user.id);
+    const placements = context.workspaces.placementsFor(user.id);
 
     // An artifact whose link has expired drops off this list. Leaving it there
     // would be listing something that opens onto "this link has expired".
@@ -198,6 +199,7 @@ export function registerSharingRoutes(app: Hono<AppEnv>, context: AppContext): v
         version: artifact.currentVersion,
         url: `${config.baseUrl}/a/${artifact.slug}`,
         starred: starred.has(artifact.id),
+        workspaceId: placements.get(artifact.id) ?? 'inbox',
         createdAt: artifact.createdAt,
         updatedAt: artifact.updatedAt,
       })),
