@@ -1,9 +1,9 @@
 /**
  * The dashboard.
  *
- * The same two groups the sidebar holds, given room: what you published, and
- * what other people shared with you. A list rather than cards, because these are
- * documents and a list is how you scan documents.
+ * The same workspaces the sidebar holds, given room: Inbox first, then each
+ * workspace in order. A list rather than cards, because these are documents
+ * and a list is how you scan documents.
  */
 
 import { type ArtifactSummary, type SharedArtifact, type WorkspaceSummary } from '../api.js';
@@ -11,12 +11,12 @@ import { Link } from '../router.jsx';
 import { useAccount } from '../App.jsx';
 import { Badge, EmptyState, RelativeTime } from '../components/primitives.js';
 import { SetupGuide } from '../components/SetupGuide.js';
+import { INBOX_ID, groupByWorkspace } from '../workspaces.js';
 
 export function Home({
   mine,
   shared,
-  // Task 9 groups the dashboard by workspace with this.
-  workspaces: _workspaces,
+  workspaces,
   loading,
   failed,
   onRetry,
@@ -30,6 +30,7 @@ export function Home({
 }) {
   const { user } = useAccount();
   const notConnected = user.connectedApps.length === 0;
+  const groups = groupByWorkspace(workspaces, mine, shared);
 
   return (
     <div className="mx-auto w-full max-w-[760px] px-6 py-9">
@@ -47,58 +48,44 @@ export function Home({
         </div>
       )}
 
-      <Group title="Yours">
-        {loading && mine.length === 0 && <LoadingRows />}
-        {/* Somebody who has not connected an assistant gets the setup guide in
-            place of an empty state: a person a document was shared with lands here
-            signed in, and this is where they learn how to publish their own. Once
-            connected, they see the ordinary empty state instead. */}
-        {!loading && mine.length === 0 && notConnected && (
-          <div className="mt-2">
-            <SetupGuide
-              instance={typeof window !== 'undefined' ? window.location.origin : ''}
-              heading="Publish your own — paste this into your assistant"
-              intro="You have not published anything yet. Copy this into Claude, Cursor, Codex or whatever you use, and it sets itself up."
+      {groups.map(({ workspace, artifacts }) => (
+        <Group key={workspace.id} title={workspace.name}>
+          {workspace.id === INBOX_ID && loading && mine.length === 0 && <LoadingRows />}
+          {/* Somebody who has not connected an assistant gets the setup guide in
+              place of an empty state: a person a document was shared with lands here
+              signed in, and this is where they learn how to publish their own. Once
+              connected, they see the ordinary empty state instead. */}
+          {workspace.id === INBOX_ID && !loading && mine.length === 0 && notConnected && (
+            <div className="mt-2">
+              <SetupGuide
+                instance={typeof window !== 'undefined' ? window.location.origin : ''}
+                heading="Publish your own — paste this into your assistant"
+                intro="You have not published anything yet. Copy this into Claude, Cursor, Codex or whatever you use, and it sets itself up."
+              />
+            </div>
+          )}
+          {workspace.id === INBOX_ID && !loading && mine.length === 0 && shared.length === 0 && !notConnected && (
+            <EmptyState title="Nothing published yet">
+              You are set up. Ask your assistant to publish a document, and it appears here.
+            </EmptyState>
+          )}
+          {workspace.id !== INBOX_ID && artifacts.length === 0 && (
+            <p className="py-2 text-[12.5px] text-ink-3">Nothing here yet. Drag a kite onto it in the sidebar.</p>
+          )}
+          {artifacts.map((artifact, index) => (
+            <Row
+              key={artifact.id}
+              slug={artifact.slug}
+              title={artifact.title}
+              type={artifact.type}
+              updatedAt={artifact.updatedAt}
+              byline={artifact.ownerId === user.id ? undefined : (artifact.ownerName ?? artifact.ownerEmail ?? undefined)}
+              trailing={artifact.isPublic === 1 ? <Badge tone="accent">Public</Badge> : null}
+              index={index}
             />
-          </div>
-        )}
-        {!loading && mine.length === 0 && !notConnected && (
-          <EmptyState title="Nothing published yet">
-            You are set up. Ask your assistant to publish a document, and it appears here.
-          </EmptyState>
-        )}
-        {mine.map((artifact, index) => (
-          <Row
-            key={artifact.id}
-            slug={artifact.slug}
-            title={artifact.title}
-            type={artifact.type}
-            updatedAt={artifact.updatedAt}
-            trailing={artifact.isPublic === 1 ? <Badge tone="accent">Public</Badge> : null}
-            index={index}
-          />
-        ))}
-      </Group>
-
-      <Group title="Shared with you">
-        {!loading && shared.length === 0 && (
-          <EmptyState title="Nothing shared with you yet">
-            When somebody shares an artifact with your email address, or with everybody at your
-            domain, it appears here.
-          </EmptyState>
-        )}
-        {shared.map((artifact, index) => (
-          <Row
-            key={artifact.id}
-            slug={artifact.slug}
-            title={artifact.title}
-            type={artifact.type}
-            updatedAt={artifact.updatedAt}
-            byline={artifact.ownerName ?? artifact.ownerEmail ?? undefined}
-            index={index}
-          />
-        ))}
-      </Group>
+          ))}
+        </Group>
+      ))}
     </div>
   );
 }
