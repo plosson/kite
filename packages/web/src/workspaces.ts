@@ -12,6 +12,7 @@
 import type { ArtifactSummary, SharedArtifact, WorkspaceSummary } from './api.js';
 
 export const INBOX_ID = 'inbox';
+const INBOX_DESCRIPTION = 'Kites that are not sorted into a workspace yet.';
 
 export type ListedArtifact = ArtifactSummary & { ownerName?: string | null; ownerEmail?: string | null };
 
@@ -37,7 +38,7 @@ export function groupByWorkspace(
   // Before the first load the list is empty, but Inbox still has to exist.
   const ordered = known.has(INBOX_ID)
     ? workspaces
-    : [{ id: INBOX_ID, name: 'Inbox', description: '', count: 0 }, ...workspaces];
+    : [{ id: INBOX_ID, name: 'Inbox', description: INBOX_DESCRIPTION, count: 0 }, ...workspaces];
 
   return ordered.map((workspace) => {
     const artifacts = byId.get(workspace.id) ?? [];

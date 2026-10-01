@@ -144,28 +144,28 @@ function SignedIn({ path }: { path: string }) {
 
   /**
    * Moves a kite at once and tells the server after. If the server refuses —
-   * the workspace was deleted in another tab, say — the kite goes back and the
-   * person is told, rather than the sidebar quietly disagreeing with the server.
+   * the workspace was deleted in another tab, say — there is no locally
+   * captured "previous" to roll back to: a second move of the same kite before
+   * the first request lands would make that value stale, and restoring it
+   * would clobber the second move. Instead the listings are reloaded from the
+   * server, which is the source of truth, and the person is told.
    */
-  const move = useCallback((artifactId: string, workspaceId: string) => {
-    let previous: string | undefined;
-    const relocate = (to: string | undefined) => {
+  const move = useCallback(
+    (artifactId: string, workspaceId: string) => {
       const apply = <T extends { id: string; workspaceId?: string }>(list: T[]) =>
-        list.map((artifact) => {
-          if (artifact.id !== artifactId) return artifact;
-          previous ??= artifact.workspaceId;
-          return { ...artifact, workspaceId: to };
-        });
+        list.map((artifact) =>
+          artifact.id === artifactId ? { ...artifact, workspaceId } : artifact,
+        );
       setMine(apply);
       setShared(apply);
-    };
 
-    relocate(workspaceId);
-    endpoints.moveArtifact(artifactId, workspaceId).catch((error: unknown) => {
-      relocate(previous ?? 'inbox');
-      setMoveError(error instanceof Error ? error.message : 'Could not move it.');
-    });
-  }, []);
+      endpoints.moveArtifact(artifactId, workspaceId).catch((error: unknown) => {
+        setMoveError(error instanceof Error ? error.message : 'Could not move it.');
+        load();
+      });
+    },
+    [load],
+  );
 
   const artifactSlug = path.startsWith('/a/') ? decodeURIComponent(path.slice(3)) : null;
 
