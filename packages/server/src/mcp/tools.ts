@@ -28,6 +28,9 @@ import type { RateLimiter, RateLimit } from '../http/rate-limit.js';
 import type { Config } from '../config.js';
 import type { UserRow, McpConnectionRow } from '../db/schema.js';
 import { ApiError } from '../errors.js';
+import type { WorkspaceService } from '../workspaces/service.js';
+import { INBOX_ID, INBOX_NAME } from '../workspaces/service.js';
+import { visibleArtifactIds } from '../workspaces/visible.js';
 import {
   renderThreads,
   DEFAULT_THREAD_CAP,
@@ -55,6 +58,7 @@ export interface McpToolResult {
 export interface McpToolContext {
   artifacts: ArtifactService;
   sharing: SharingService;
+  workspaces: WorkspaceService;
   comments: CommentService;
   notifications: NotificationService;
   mailer: Mailer;
@@ -104,8 +108,14 @@ const OUTSIDE_CONNECTION =
   'That artifact was published outside this connection, so it cannot be edited here. Open it in the browser to manage it.';
 
 // ---------------------------------------------------------------------------
-// The eight tools
+// The ten tools
 // ---------------------------------------------------------------------------
+
+const CHOOSE_WORKSPACE =
+  'Before publishing, call list_workspaces. Choose the workspace whose description fits this ' +
+  'document. If none fits, or more than one could, ask the user and name the candidates. You can ' +
+  'offer to create a new workspace, but only create it if they agree. Pass "inbox" when the user ' +
+  'does not want it sorted. Tell the user which workspace you used.';
 
 const publishArtifact: McpTool = {
   name: 'publish_artifact',
@@ -127,13 +137,18 @@ const publishArtifact: McpTool = {
     'In HTML, give each section-level block a short id drawn from what it says — ' +
     'id="pricing-note", not id="p1". Comments attach to those ids, so a comment can point at ' +
     'the block you need to change; a block without one can only be found by its position in ' +
-    'the page, which moves.',
+    'the page, which moves. ' + CHOOSE_WORKSPACE,
   inputSchema: {
     type: 'object',
     properties: {
       content: { type: 'string', description: 'The document text. Markdown or HTML, never base64.' },
       format: { type: 'string', enum: ['markdown', 'html'], description: 'Stated, never inferred.' },
       title: { type: 'string', description: 'Optional. Derived from the content when left out.' },
+      workspace: {
+        type: 'string',
+        description:
+          'Which workspace it goes in: a name or id from list_workspaces, or "inbox". Required once the person has any workspace.',
+      },
     },
     required: ['content', 'format'],
   },
@@ -142,6 +157,7 @@ const publishArtifact: McpTool = {
     const format = requireFormat(args);
     const title = optionalArgString(args, 'title');
     requireWithinContentCap(content);
+    const workspace = chooseWorkspace(ctx, args);
 
     const limited = checkLimit(ctx, 'publish', ctx.config.limits.publishesPerHour);
     if (limited) return limited;
@@ -153,12 +169,14 @@ const publishArtifact: McpTool = {
       content,
       title,
     });
+    if (workspace.id !== INBOX_ID) ctx.workspaces.place(ctx.user.id, created.id, workspace.id);
 
     return textResult(
       `Published "${created.title}" as ${created.type}.\n` +
         `Link: ${urlFor(ctx, created.slug)}\n` +
         `artifact_id: ${created.id}\n` +
-        `version: ${created.version} (pass this as base_version to update it)`,
+        `version: ${created.version} (pass this as base_version to update it)\n` +
+        `workspace: ${workspace.name}`,
     );
   },
 };
@@ -282,16 +300,73 @@ const listArtifacts: McpTool = {
       return textResult('This connection has not published anything yet.');
     }
 
+    const placements = ctx.workspaces.placementsFor(ctx.user.id);
+    const names = new Map(
+      ctx.workspaces.list(ctx.user.id, new Set()).map((workspace) => [workspace.id, workspace.name]),
+    );
+
     return textResult(
       rows
         .map(
           (row) =>
             `${row.title} — ${row.type} v${row.version}\n` +
             `  artifact_id: ${row.id}\n` +
-            `  link: ${urlFor(ctx, row.slug)}`,
+            `  link: ${urlFor(ctx, row.slug)}\n` +
+            `  workspace: ${names.get(placements.get(row.id) ?? INBOX_ID) ?? INBOX_NAME}`,
         )
         .join('\n'),
     );
+  },
+};
+
+const listWorkspaces: McpTool = {
+  name: 'list_workspaces',
+  annotations: {
+    title: 'List workspaces',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  description:
+    'List the workspaces this person sorts documents into, with what belongs in each. ' +
+    'Inbox is always there and holds whatever is not sorted. Read the descriptions to ' +
+    'decide where a new document goes.',
+  inputSchema: { type: 'object', properties: {} },
+  run(_args, ctx) {
+    return textResult(describeWorkspaces(ctx));
+  },
+};
+
+const createWorkspace: McpTool = {
+  name: 'create_workspace',
+  // Adds a workspace and touches nothing already there. Not idempotent: the
+  // second call with the same name is refused rather than repeated.
+  annotations: {
+    title: 'Create a workspace',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  description:
+    'Create a workspace to sort documents into. Only call this after the user has agreed to the ' +
+    'name and the description. The description is what you and other assistants read later to ' +
+    'decide which documents belong in it, so write what goes in it, not what it is called.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'At most 60 characters. "Inbox" is reserved.' },
+      description: { type: 'string', description: 'What belongs in it. At most 500 characters.' },
+    },
+    required: ['name', 'description'],
+  },
+  run(args, ctx) {
+    const created = ctx.workspaces.create(ctx.user.id, {
+      name: args.name,
+      description: args.description,
+    });
+    return textResult(`Created workspace "${created.name}".\nworkspace_id: ${created.id}`);
   },
 };
 
@@ -550,7 +625,7 @@ const resolveCommentThread: McpTool = {
 };
 
 /**
- * The tool list, in one place. A guard test pins these exact eight names, so
+ * The tool list, in one place. A guard test pins these exact ten names, so
  * adding a tool that widens what a connection can do fails loudly rather than
  * slipping in.
  */
@@ -563,6 +638,8 @@ const TOOLS: readonly McpTool[] = [
   listComments,
   replyToComment,
   resolveCommentThread,
+  listWorkspaces,
+  createWorkspace,
 ];
 
 const BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
@@ -749,6 +826,51 @@ function optionalArgBoolean(args: Record<string, unknown>, field: string): boole
 
 function urlFor(ctx: McpToolContext, slug: string): string {
   return `${ctx.config.baseUrl}/a/${slug}`;
+}
+
+/** Every workspace, one per line, the way list_workspaces and the refusals show them. */
+function describeWorkspaces(ctx: McpToolContext): string {
+  const visible = visibleArtifactIds(ctx.artifacts, ctx.sharing, ctx.user);
+  return ctx.workspaces
+    .list(ctx.user.id, visible)
+    .map(
+      (workspace) =>
+        `${workspace.name} — ${workspace.count} kite${workspace.count === 1 ? '' : 's'}\n` +
+        `  workspace_id: ${workspace.id}\n` +
+        `  description: ${workspace.description}`,
+    )
+    .join('\n');
+}
+
+/**
+ * Where a new document goes. Optional only while the person has no workspaces
+ * of their own; after that, leaving it out is refused with the list to choose
+ * from, so an assistant that skipped the instructions still has to decide.
+ */
+function chooseWorkspace(ctx: McpToolContext, args: Record<string, unknown>): { id: string; name: string } {
+  const value = args.workspace;
+  if (value !== undefined && value !== null && typeof value !== 'string') {
+    throw new ApiError('validation_failed', 'workspace must be text: a workspace name or id, or "inbox".');
+  }
+  const hasOwn = ctx.workspaces.list(ctx.user.id, new Set()).length > 1;
+
+  if (value === undefined || value === null || value.trim() === '') {
+    if (!hasOwn) return { id: INBOX_ID, name: INBOX_NAME };
+    throw new ApiError(
+      'validation_failed',
+      `Nothing was published: say which workspace it goes in. ${CHOOSE_WORKSPACE}\n\n${describeWorkspaces(ctx)}`,
+    );
+  }
+
+  try {
+    return ctx.workspaces.resolve(ctx.user.id, value);
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    throw new ApiError(
+      'not_found',
+      `Nothing was published: there is no workspace called "${value}". Choose one of these, or ask the user.\n\n${describeWorkspaces(ctx)}`,
+    );
+  }
 }
 
 function textResult(text: string): McpToolResult {
