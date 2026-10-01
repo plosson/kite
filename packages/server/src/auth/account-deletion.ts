@@ -11,7 +11,7 @@
  *
  *   goes    their artifacts and everything hanging off them, their sessions and
  *           CLI tokens, their sign-in codes, their notifications, every share
- *           that named them, and every mention of them.
+ *           that named them, every mention of them, and their workspaces.
  *   forgets their comments and threads on other people's artifacts, and other
  *           people's notifications that they caused. Those keep their shape and
  *           lose the name.
@@ -39,6 +39,8 @@ import {
   commentMentions,
   accessRequests,
   notifications,
+  workspaces,
+  workspacePlacements,
 } from '../db/schema.js';
 import { nowIso } from '../time.js';
 import { ApiError } from '../errors.js';
@@ -98,6 +100,12 @@ export function deleteAccount(db: Db, userId: string): AccountDeletionSummary {
       .delete(artifacts)
       .where(eq(artifacts.ownerId, userId))
       .run().changes;
+
+    // Their own sorting of what they could see. The users row is kept, so the
+    // foreign keys never cascade these; they have to go by hand. Placements
+    // first, though deleting the workspaces would take most of them anyway.
+    tx.delete(workspacePlacements).where(eq(workspacePlacements.userId, userId)).run();
+    tx.delete(workspaces).where(eq(workspaces.userId, userId)).run();
 
     // Anything they could still sign in or act with. Deleted rather than
     // revoked: a revoked row still says which account it belonged to.

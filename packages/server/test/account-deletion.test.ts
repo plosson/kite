@@ -28,6 +28,8 @@ import {
   oauthClients,
   oauthCodes,
   oauthRefreshTokens,
+  workspaces,
+  workspacePlacements,
 } from '../src/db/schema.js';
 import { newId } from '../src/ids.js';
 import { nowIso } from '../src/time.js';
@@ -330,6 +332,28 @@ describe('what closing an account takes with it', () => {
     expect(rowsIn(artifacts).map((row) => row.id)).toEqual([colleaguesDesignDoc.id]);
     expect((await colleague.as(`/api/artifacts/${leaversReport.id}`)).status).toBe(404);
     expect((await colleague.as(`/api/artifacts/by-slug/${leaversNotes.slug}`)).status).toBe(404);
+  });
+
+  it("takes their workspaces, and their placement of a colleague's kite", async () => {
+    const created = await leaver.as(
+      '/api/workspaces',
+      jsonBody({ name: 'Design', description: 'Design reviews' }),
+    );
+    const workspace = (await created.json()) as { id: string };
+    await leaver.as(`/api/artifacts/${colleaguesDesignDoc.id}/workspace`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId: workspace.id }),
+    });
+    expect(rowsIn(workspacePlacements)).toHaveLength(1);
+
+    await closeAccount();
+
+    // The users row survives deletion, so no foreign key cascade can be relied on.
+    expect(rowsIn(workspaces)).toHaveLength(0);
+    expect(rowsIn(workspacePlacements)).toHaveLength(0);
+    // The colleague's kite itself is untouched.
+    expect((await colleague.as(`/api/artifacts/${colleaguesDesignDoc.id}`)).status).toBe(200);
   });
 
   it('takes the version history with them', async () => {
