@@ -35,6 +35,11 @@ export function groupByWorkspace(
     byId.get(id)?.push(artifact);
   }
 
+  // Newest first, within each workspace, own and shared kites mixed together.
+  for (const artifacts of byId.values()) {
+    artifacts.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
   // Before the first load the list is empty, but Inbox still has to exist.
   const ordered = known.has(INBOX_ID)
     ? workspaces
