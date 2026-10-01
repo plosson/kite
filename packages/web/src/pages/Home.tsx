@@ -6,7 +6,7 @@
  * documents and a list is how you scan documents.
  */
 
-import { type ArtifactSummary, type SharedArtifact } from '../api.js';
+import { type ArtifactSummary, type SharedArtifact, type WorkspaceSummary } from '../api.js';
 import { Link } from '../router.jsx';
 import { useAccount } from '../App.jsx';
 import { Badge, EmptyState, RelativeTime } from '../components/primitives.js';
@@ -15,12 +15,15 @@ import { SetupGuide } from '../components/SetupGuide.js';
 export function Home({
   mine,
   shared,
+  // Task 9 groups the dashboard by workspace with this.
+  workspaces: _workspaces,
   loading,
   failed,
   onRetry,
 }: {
   mine: ArtifactSummary[];
   shared: SharedArtifact[];
+  workspaces: WorkspaceSummary[];
   loading: boolean;
   failed: boolean;
   onRetry: () => void;

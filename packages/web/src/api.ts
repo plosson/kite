@@ -20,6 +20,8 @@ import type {
   ArtifactDetail,
   SessionsResponse,
   MintedMcpToken,
+  WorkspaceSummary,
+  ListWorkspacesResponse,
 } from '@open-artifact/shared';
 
 export type {
@@ -36,6 +38,8 @@ export type {
   McpConnectionEntry,
   MintedMcpToken,
   SessionsResponse,
+  WorkspaceSummary,
+  ListWorkspacesResponse,
 } from '@open-artifact/shared';
 
 export interface ApiFailure {
@@ -270,6 +274,25 @@ export const endpoints = {
     api<{ starred: boolean }>(`/api/artifacts/${id}/star`, { method: 'PUT' }),
   unstarArtifact: (id: string) =>
     api<{ starred: boolean }>(`/api/artifacts/${id}/star`, { method: 'DELETE' }),
+
+  // --- Workspaces ---
+  workspaces: () => api<ListWorkspacesResponse>('/api/workspaces'),
+  createWorkspace: (input: { name: string; description: string }) =>
+    api<WorkspaceSummary>('/api/workspaces', post(input)),
+  updateWorkspace: (id: string, input: { name: string; description: string }) =>
+    api<WorkspaceSummary>(`/api/workspaces/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  deleteWorkspace: (id: string) =>
+    api<{ ok: true }>(`/api/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  moveArtifact: (id: string, workspaceId: string) =>
+    api<{ workspaceId: string }>(`/api/artifacts/${id}/workspace`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId }),
+    }),
 
   // --- Sharing ---
   sharing: (id: string) => api<SharingState>(`/api/artifacts/${id}/sharing`),

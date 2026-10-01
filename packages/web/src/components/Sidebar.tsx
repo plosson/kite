@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '../router.jsx';
 import { useAccount } from '../App.jsx';
-import { type ArtifactSummary, type SharedArtifact } from '../api.js';
+import { type ArtifactSummary, type SharedArtifact, type WorkspaceSummary } from '../api.js';
 import { Spinner } from './primitives.js';
 import { NotificationsButton, NotificationsPanel } from './Notifications.js';
 import { endpoints } from '../api.js';
@@ -25,7 +25,15 @@ const COLLAPSE_PREFERENCE = 'oa.sidebar.collapsed';
 export interface SidebarData {
   mine: ArtifactSummary[];
   shared: SharedArtifact[];
+  workspaces: WorkspaceSummary[];
   loading: boolean;
+  /** Moves a kite into a workspace, or back to "inbox". Optimistic. */
+  onMove: (artifactId: string, workspaceId: string) => void;
+  /** After a workspace is created, changed or deleted. */
+  onWorkspacesChanged: () => void;
+  /** Set when the server refused the last move. */
+  moveError: string | null;
+  onDismissMoveError: () => void;
 }
 
 export function AppFrame({
