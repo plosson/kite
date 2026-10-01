@@ -395,7 +395,7 @@ function WorkspaceSection({
             type="button"
             onClick={onEdit}
             aria-label={`Edit workspace ${workspace.name}`}
-            className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover/header:opacity-100"
+            className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover/header:opacity-100 pointer-coarse:opacity-100"
           >
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <circle cx="3.5" cy="8" r="1.2" />
@@ -490,7 +490,7 @@ function MoveButton({ title, onClick }: { title: string; onClick: () => void }) 
         event.stopPropagation();
         onClick();
       }}
-      className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+      className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
     >
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
@@ -521,7 +521,7 @@ function StarToggle({ starred, onToggle }: { starred: boolean; onToggle: () => v
         'grid size-5 shrink-0 place-items-center rounded-[--radius-xs] transition',
         starred
           ? 'opacity-100'
-          : 'text-ink-3 opacity-0 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100',
+          : 'text-ink-3 opacity-0 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100',
       ].join(' ')}
       style={starred ? { color: 'oklch(74% 0.15 78)' } : undefined}
     >
