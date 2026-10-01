@@ -19,8 +19,11 @@ import { NotificationsButton, NotificationsPanel } from './Notifications.js';
 import { endpoints } from '../api.js';
 import { useStars } from '../stars.js';
 import { ThemeControl } from './ThemeControl.js';
+import { groupByWorkspace, INBOX_ID, type ListedArtifact } from '../workspaces.js';
+import { WorkspaceDialog, MoveDialog } from './WorkspaceDialogs.js';
 
 const COLLAPSE_PREFERENCE = 'oa.sidebar.collapsed';
+const DRAG_TYPE = 'application/x-kite-artifact';
 
 export interface SidebarData {
   mine: ArtifactSummary[];
@@ -100,6 +103,10 @@ function Sidebar({
   const { path } = useRouter();
   const { user } = useAccount();
   const stars = useStars();
+  const [collapsedWorkspaces, toggleWorkspace] = useCollapsedWorkspaces();
+  const [editing, setEditing] = useState<{ workspace: WorkspaceSummary | null } | null>(null);
+  const [moving, setMoving] = useState<ListedArtifact | null>(null);
+  const groups = groupByWorkspace(data.workspaces, data.mine, data.shared);
   // Only somebody who has not connected an assistant yet gets the nudge.
   const notConnected = user.connectedApps.length === 0;
 
@@ -179,39 +186,75 @@ function Sidebar({
           </Section>
         )}
 
-        <Section title="Yours" count={data.mine.length} loading={data.loading}>
-          {data.mine.map((artifact) => (
-            <ArtifactLink
-              key={artifact.id}
-              to={`/a/${artifact.slug}`}
-              title={artifact.title}
-              active={path === `/a/${artifact.slug}`}
-              type={artifact.type}
-              starred={stars.isStarred(artifact.id)}
-              onToggleStar={() => stars.toggle(artifact.id)}
-            />
-          ))}
-          {!data.loading && data.mine.length === 0 && <Nothing>Nothing published yet</Nothing>}
-        </Section>
+        {groups.map(({ workspace, artifacts }) => (
+          <WorkspaceSection
+            key={workspace.id}
+            workspace={workspace}
+            collapsed={collapsedWorkspaces.has(workspace.id)}
+            onToggle={() => toggleWorkspace(workspace.id)}
+            onDropArtifact={(artifactId) => {
+              const current = [...data.mine, ...data.shared].find((a) => a.id === artifactId);
+              if ((current?.workspaceId ?? INBOX_ID) !== workspace.id) data.onMove(artifactId, workspace.id);
+            }}
+            onEdit={workspace.id === INBOX_ID ? undefined : () => setEditing({ workspace })}
+            loading={workspace.id === INBOX_ID && data.loading}
+          >
+            {artifacts.map((artifact) => (
+              <ArtifactLink
+                key={artifact.id}
+                artifactId={artifact.id}
+                to={`/a/${artifact.slug}`}
+                title={artifact.title}
+                subtitle={artifact.ownerId === user.id ? undefined : (artifact.ownerName ?? artifact.ownerEmail ?? undefined)}
+                active={path === `/a/${artifact.slug}`}
+                type={artifact.type}
+                starred={stars.isStarred(artifact.id)}
+                onToggleStar={() => stars.toggle(artifact.id)}
+                onRequestMove={() => setMoving(artifact)}
+              />
+            ))}
+            {!data.loading && artifacts.length === 0 && (
+              <Nothing>
+                {workspace.id === INBOX_ID && data.mine.length === 0 && data.shared.length === 0
+                  ? 'Nothing published yet'
+                  : 'Drop a kite here'}
+              </Nothing>
+            )}
+          </WorkspaceSection>
+        ))}
 
-        <Section title="Shared with you" count={data.shared.length} loading={data.loading}>
-          {data.shared.map((artifact) => (
-            <ArtifactLink
-              key={artifact.id}
-              to={`/a/${artifact.slug}`}
-              title={artifact.title}
-              subtitle={artifact.ownerName ?? artifact.ownerEmail ?? undefined}
-              active={path === `/a/${artifact.slug}`}
-              type={artifact.type}
-              starred={stars.isStarred(artifact.id)}
-              onToggleStar={() => stars.toggle(artifact.id)}
-            />
-          ))}
-          {!data.loading && data.shared.length === 0 && <Nothing>Nothing yet</Nothing>}
-        </Section>
+        <button
+          type="button"
+          onClick={() => setEditing({ workspace: null })}
+          className="mt-3 flex w-full items-center gap-1.5 rounded-[--radius-sm] px-1.5 py-1 text-[12px] text-ink-3 transition-colors hover:bg-sunken hover:text-ink"
+        >
+          <span aria-hidden="true">+</span> New workspace
+        </button>
+
+        {data.moveError && (
+          <p role="alert" className="mt-2 px-1.5 text-[12px] text-danger">
+            {data.moveError}{' '}
+            <button type="button" className="underline" onClick={data.onDismissMoveError}>
+              Dismiss
+            </button>
+          </p>
+        )}
       </nav>
 
       <AccountRow />
+
+      <WorkspaceDialog
+        open={editing !== null}
+        workspace={editing?.workspace ?? null}
+        onClose={() => setEditing(null)}
+        onSaved={data.onWorkspacesChanged}
+      />
+      <MoveDialog
+        artifact={moving}
+        workspaces={groups.map((group) => group.workspace)}
+        onClose={() => setMoving(null)}
+        onMove={data.onMove}
+      />
     </aside>
   );
 }
@@ -244,6 +287,140 @@ function Section({
   );
 }
 
+const WORKSPACES_COLLAPSED = 'oa.sidebar.workspaces.collapsed';
+
+/** The ids of the workspace sections this person has folded, remembered across visits. */
+function useCollapsedWorkspaces(): [Set<string>, (id: string) => void] {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(WORKSPACES_COLLAPSED);
+      return new Set(stored ? (JSON.parse(stored) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+
+  function toggle(id: string) {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(WORKSPACES_COLLAPSED, JSON.stringify([...next]));
+      } catch {
+        // Private browsing refuses this. Not remembering is a small loss.
+      }
+      return next;
+    });
+  }
+
+  return [collapsed, toggle];
+}
+
+/**
+ * One workspace in the sidebar, and a place to drop a kite.
+ *
+ * The whole section is the drop target, header included, so a kite can be
+ * dropped on a folded workspace as easily as an open one.
+ */
+function WorkspaceSection({
+  workspace,
+  collapsed,
+  onToggle,
+  onDropArtifact,
+  onEdit,
+  loading = false,
+  children,
+}: {
+  workspace: WorkspaceSummary;
+  collapsed: boolean;
+  onToggle: () => void;
+  onDropArtifact: (artifactId: string) => void;
+  /** Left out for Inbox, which cannot be edited. */
+  onEdit?: () => void;
+  loading?: boolean;
+  children: React.ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+
+  return (
+    <section
+      data-workspace-id={workspace.id}
+      className={[
+        'mt-3 rounded-[--radius-sm] transition-colors first:mt-1',
+        over ? 'bg-sunken ring-1 ring-line' : '',
+      ].join(' ')}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setOver(true);
+      }}
+      onDragLeave={(event) => {
+        // Leaving for a child is not leaving the section.
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setOver(false);
+      }}
+      onDrop={(event) => {
+        setOver(false);
+        const artifactId = event.dataTransfer.getData(DRAG_TYPE);
+        if (!artifactId) return;
+        event.preventDefault();
+        onDropArtifact(artifactId);
+      }}
+    >
+      <div className="group/header flex items-center gap-1 px-1.5 py-1">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          title={workspace.description || undefined}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        >
+          <Chevron open={!collapsed} />
+          <h2 className="truncate text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-3">
+            {workspace.name}
+          </h2>
+          {loading ? (
+            <Spinner className="text-ink-3" />
+          ) : (
+            workspace.count > 0 && <span className="text-[11px] tabular-nums text-ink-3">{workspace.count}</span>
+          )}
+        </button>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit workspace ${workspace.name}`}
+            className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover/header:opacity-100"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <circle cx="3.5" cy="8" r="1.2" />
+              <circle cx="8" cy="8" r="1.2" />
+              <circle cx="12.5" cy="8" r="1.2" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {!collapsed && <div className="flex flex-col">{children}</div>}
+    </section>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="9"
+      height="9"
+      viewBox="0 0 10 10"
+      aria-hidden="true"
+      className={`shrink-0 text-ink-3 transition-transform ${open ? 'rotate-90' : ''}`}
+    >
+      <path d="M3.5 2l3 3-3 3" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ArtifactLink({
   to,
   title,
@@ -252,6 +429,8 @@ function ArtifactLink({
   type,
   starred = false,
   onToggleStar,
+  artifactId,
+  onRequestMove,
 }: {
   to: string;
   title: string;
@@ -261,10 +440,21 @@ function ArtifactLink({
   starred?: boolean;
   /** Left out for a row that has no star control, like a loading placeholder. */
   onToggleStar?: () => void;
+  /** Left out for a row that cannot be dragged, like a starred placeholder. */
+  artifactId?: string;
+  /** Left out where there is no dialog to open, such as the Starred section. */
+  onRequestMove?: () => void;
 }) {
   return (
     <Link
       to={to}
+      data-artifact-id={artifactId}
+      draggable={artifactId !== undefined}
+      onDragStart={(event: React.DragEvent) => {
+        if (!artifactId) return;
+        event.dataTransfer.setData(DRAG_TYPE, artifactId);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
       className={[
         'group flex items-center gap-2 rounded-[--radius-sm] px-1.5 py-[5px] transition-colors',
         active ? 'bg-sunken text-ink' : 'text-ink-2 hover:bg-sunken hover:text-ink',
@@ -275,8 +465,35 @@ function ArtifactLink({
         <span className="block truncate text-[12.5px] leading-[1.35]">{title}</span>
         {subtitle && <span className="block truncate text-[11px] text-ink-3">{subtitle}</span>}
       </span>
+      {onRequestMove && <MoveButton title={title} onClick={onRequestMove} />}
       {onToggleStar && <StarToggle starred={starred} onToggle={onToggleStar} />}
     </Link>
+  );
+}
+
+/**
+ * Moving without dragging, for a phone or a keyboard. Like the star, it sits in
+ * the row's link, so the click is stopped before the link follows it; and it
+ * only opens the dialog, which is drawn outside every row so its own clicks
+ * never reach a link.
+ */
+function MoveButton({ title, onClick }: { title: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Move “${title}”`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+      className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+        <path d="M6.5 9.25h4M8.75 7.5l1.75 1.75-1.75 1.75" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
   );
 }
 
