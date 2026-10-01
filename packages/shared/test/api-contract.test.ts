@@ -22,6 +22,7 @@ describe('the error codes clients branch on', () => {
       'unsupported_type',
       'payload_too_large',
       'version_conflict',
+      'name_taken',
       'rate_limited',
       'internal_error',
     ]);
