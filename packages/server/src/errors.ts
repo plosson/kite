@@ -29,6 +29,8 @@ export const ERROR_CODES = {
   payload_too_large: 413,
   /** Someone else changed the artifact since the version you based this on. */
   version_conflict: 409,
+  /** A name this person already uses, or one the product keeps for itself. */
+  name_taken: 409,
   /** Too many requests. */
   rate_limited: 429,
   /** Something went wrong on the server. */
