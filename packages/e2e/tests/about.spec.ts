@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { startServer, type RunningServer } from '../src/server.js';
 
 /**
@@ -17,7 +17,7 @@ test.afterEach(async () => {
   await server.stop();
 });
 
-const about = (page: import('@playwright/test').Page) => page.getByRole('region', { name: 'About this document' });
+const about = (page: Page) => page.getByRole('region', { name: 'About this document' });
 
 test('shows the description, and the summary only when asked, keeping its lines', async ({ page, context }) => {
   const kite = await server.publish({
