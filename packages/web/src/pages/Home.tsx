@@ -33,7 +33,7 @@ export function Home({
   const groups = groupByWorkspace(workspaces, mine, shared);
 
   return (
-    <div className="mx-auto w-full max-w-[760px] px-6 py-9">
+    <div className="mx-auto w-full max-w-[760px] px-6 py-9 max-md:px-4 max-md:py-6">
       <h1 className="text-[17px]">Artifacts</h1>
 
       {failed && (

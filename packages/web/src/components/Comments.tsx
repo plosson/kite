@@ -20,6 +20,7 @@ import { endpoints, ApiError, type MentionCandidate, type MentionOutcome } from 
 import { Button, Badge, RelativeTime, Spinner, ErrorNote } from './primitives.js';
 import { Avatar, PanelIcon } from './Sidebar.js';
 import { setupPrompt } from './SetupGuide.js';
+import { useNarrowScreen } from '../viewport.js';
 
 export interface CommentsPanelProps {
   artifactId: string;
@@ -61,8 +62,17 @@ export interface CommentsPanelProps {
 
 const COLLAPSE_PREFERENCE = 'oa.comments.collapsed';
 
-/** Whether the comments panel is folded away, remembered the way the sidebar is. */
+/**
+ * Whether the comments panel is folded away, remembered the way the sidebar is.
+ *
+ * Except on a phone, where the open panel covers the whole document. There it
+ * starts folded every time and is not remembered, so opening it to read one
+ * thread does not hide the next document behind it, and the desktop preference
+ * is left alone.
+ */
 export function useCommentsCollapsed(): [boolean, () => void] {
+  const narrow = useNarrowScreen();
+  const [openOnPhone, setOpenOnPhone] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_PREFERENCE) === 'true';
@@ -72,6 +82,10 @@ export function useCommentsCollapsed(): [boolean, () => void] {
   });
 
   function toggle() {
+    if (narrow) {
+      setOpenOnPhone((wasOpen) => !wasOpen);
+      return;
+    }
     setCollapsed((wasCollapsed) => {
       const next = !wasCollapsed;
       try {
@@ -83,7 +97,7 @@ export function useCommentsCollapsed(): [boolean, () => void] {
     });
   }
 
-  return [collapsed, toggle];
+  return [narrow ? !openOnPhone : collapsed, toggle];
 }
 
 export function CommentsPanel({
@@ -105,6 +119,14 @@ export function CommentsPanel({
 }: CommentsPanelProps) {
   const [showResolved, setShowResolved] = useState(false);
   const candidates = useMentionCandidates(artifactId, canComment);
+  const narrow = useNarrowScreen();
+
+  // On a phone the panel covers the document, so being taken to a passage
+  // means getting out of the way of it.
+  function reveal(threadId: string) {
+    onRevealThread(threadId);
+    if (narrow) onToggle();
+  }
   const list = useRef<HTMLDivElement>(null);
   /** The last reveal acted on, so one ask brings the card up once. */
   const revealed = useRef(0);
@@ -137,8 +159,10 @@ export function CommentsPanel({
   }, [revealCount, activeThreadId, showResolved, threads, collapsed]);
 
   if (collapsed) {
+    // No rail on a phone: the Comments button in the bar is the way back, and
+    // the width is worth more to the document.
     return (
-      <aside className="flex h-full w-11 shrink-0 flex-col items-center gap-1 border-l border-line bg-canvas py-2.5">
+      <aside className="flex h-full w-11 shrink-0 flex-col items-center gap-1 border-l border-line bg-canvas py-2.5 max-md:hidden">
         <button
           type="button"
           onClick={onToggle}
@@ -153,7 +177,7 @@ export function CommentsPanel({
   }
 
   return (
-    <aside className="oa-fade flex h-full w-[320px] shrink-0 flex-col border-l border-line bg-canvas">
+    <aside className="oa-fade flex h-full w-[320px] shrink-0 flex-col border-l border-line bg-canvas max-md:fixed max-md:inset-0 max-md:z-30 max-md:w-full max-md:border-l-0">
       <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-line pl-3.5 pr-2.5">
         <h2 className="text-[12px] font-semibold uppercase tracking-[0.05em] text-ink-3">
           Comments
@@ -192,7 +216,7 @@ export function CommentsPanel({
             currentUserId={currentUserId}
             isArtifactOwner={isArtifactOwner}
             onFocus={() => onFocusThread(thread.id)}
-            onReveal={() => onRevealThread(thread.id)}
+            onReveal={() => reveal(thread.id)}
             onChanged={onChanged}
             candidates={candidates}
           />
@@ -219,7 +243,7 @@ export function CommentsPanel({
                   currentUserId={currentUserId}
                   isArtifactOwner={isArtifactOwner}
                   onFocus={() => onFocusThread(thread.id)}
-                  onReveal={() => onRevealThread(thread.id)}
+                  onReveal={() => reveal(thread.id)}
                   onChanged={onChanged}
                   candidates={candidates}
                 />

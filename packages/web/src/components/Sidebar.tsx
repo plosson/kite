@@ -10,7 +10,7 @@
  * person, so somebody who prefers it open keeps it open.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '../router.jsx';
 import { useAccount } from '../App.jsx';
 import { type ArtifactSummary, type SharedArtifact, type WorkspaceSummary } from '../api.js';
@@ -21,6 +21,7 @@ import { useStars } from '../stars.js';
 import { ThemeControl } from './ThemeControl.js';
 import { groupByWorkspace, INBOX_ID, type ListedArtifact } from '../workspaces.js';
 import { WorkspaceDialog, MoveDialog } from './WorkspaceDialogs.js';
+import { useNarrowScreen } from '../viewport.js';
 
 const COLLAPSE_PREFERENCE = 'oa.sidebar.collapsed';
 const DRAG_TYPE = 'application/x-kite-artifact';
@@ -50,6 +51,24 @@ export function AppFrame({
   focusMode?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(() => initialCollapsed(focusMode));
+  const narrow = useNarrowScreen();
+  // On a phone the sidebar is a drawer over the page, never beside it: there is
+  // no room for both. It starts closed every time and is not remembered, so the
+  // desktop preference is left alone.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { path } = useRouter();
+
+  // Choosing somewhere to go is the end of what the drawer was opened for.
+  useEffect(() => setDrawerOpen(false), [path]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawerOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [drawerOpen]);
 
   // Following a link into an artifact collapses the sidebar; going back to the
   // dashboard opens it again. Somebody who has set a preference keeps it.
@@ -70,11 +89,64 @@ export function AppFrame({
     });
   }
 
+  // One tree for both widths, with the page always in the same place in it, so
+  // crossing the breakpoint — turning a tablet — does not remount the page and
+  // throw away whatever was being typed into it.
   return (
-    <div className="flex min-h-dvh">
-      <Sidebar data={data} collapsed={collapsed} onToggle={toggle} />
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
+    <DrawerContext.Provider value={narrow ? () => setDrawerOpen(true) : null}>
+      <div className="flex min-h-dvh">
+        {!narrow && <Sidebar data={data} collapsed={collapsed} onToggle={toggle} />}
+        <div className="min-w-0 flex-1">
+          {/* An artifact has its own bar to carry the menu button. Every other
+              screen gets this one on a phone, or there would be no way in. */}
+          {narrow && !focusMode && (
+            <header className="flex h-11 items-center gap-1 border-b border-line px-2">
+              <SidebarButton />
+              <Link to="/" className="px-1.5 py-1 text-[13px] font-semibold tracking-[-0.02em] text-ink">
+                Kite
+              </Link>
+            </header>
+          )}
+          {children}
+        </div>
+      </div>
+
+      {narrow && drawerOpen && (
+        <div className="fixed inset-0 z-40">
+          <div
+            aria-hidden="true"
+            className="oa-fade absolute inset-0 bg-black/25"
+            onClick={() => setDrawerOpen(false)}
+          />
+          <Sidebar data={data} collapsed={false} onToggle={() => setDrawerOpen(false)} drawer />
+        </div>
+      )}
+    </DrawerContext.Provider>
+  );
+}
+
+/** Opens the drawer on a phone. Null anywhere the drawer is not in play. */
+const DrawerContext = createContext<(() => void) | null>(null);
+
+/**
+ * The way into the sidebar on a phone, for a screen's own header to carry. It
+ * draws nothing on a wider screen, or outside the signed-in frame, where the
+ * sidebar is already there or does not exist.
+ */
+export function SidebarButton() {
+  const openDrawer = useContext(DrawerContext);
+  if (!openDrawer) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={openDrawer}
+      aria-label="Show sidebar"
+      aria-expanded={false}
+      className="grid size-8 shrink-0 place-items-center rounded-[--radius-sm] text-ink-3 transition-colors hover:bg-sunken hover:text-ink"
+    >
+      <PanelIcon />
+    </button>
   );
 }
 
@@ -95,10 +167,13 @@ function Sidebar({
   data,
   collapsed,
   onToggle,
+  drawer = false,
 }: {
   data: SidebarData;
   collapsed: boolean;
   onToggle: () => void;
+  /** Drawn over the page from the left edge, on a phone. */
+  drawer?: boolean;
 }) {
   const { path } = useRouter();
   const { user } = useAccount();
@@ -143,7 +218,14 @@ function Sidebar({
     // area. Without an explicit order on the aside, a content row that happens
     // to sit under the panel can win the paint order and swallow its clicks —
     // found when a taller setup guide pushed a row under "Mark all read".
-    <aside className="oa-fade sticky top-0 z-10 flex h-dvh w-[228px] shrink-0 flex-col border-r border-line bg-canvas">
+    <aside
+      className={[
+        'oa-fade flex h-dvh shrink-0 flex-col border-r border-line bg-canvas',
+        drawer
+          ? 'absolute left-0 top-0 w-[min(300px,85vw)] shadow-[--shadow-dialog]'
+          : 'sticky top-0 z-10 w-[228px]',
+      ].join(' ')}
+    >
       <div className="flex h-11 shrink-0 items-center justify-between gap-1 px-2.5">
         <Link
           to="/"
@@ -395,7 +477,7 @@ function WorkspaceSection({
             type="button"
             onClick={onEdit}
             aria-label={`Edit workspace ${workspace.name}`}
-            className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover/header:opacity-100 pointer-coarse:opacity-100"
+            className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] pointer-coarse:size-8 text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover/header:opacity-100 pointer-coarse:opacity-100"
           >
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <circle cx="3.5" cy="8" r="1.2" />
@@ -459,7 +541,7 @@ function ArtifactLink({
         event.dataTransfer.effectAllowed = 'move';
       }}
       className={[
-        'group flex items-center gap-2 rounded-[--radius-sm] px-1.5 py-[5px] transition-colors',
+        'group flex items-center gap-2 rounded-[--radius-sm] px-1.5 py-[5px] transition-colors pointer-coarse:py-1',
         active ? 'bg-sunken text-ink' : 'text-ink-2 hover:bg-sunken hover:text-ink',
       ].join(' ')}
     >
@@ -490,7 +572,7 @@ function MoveButton({ title, onClick }: { title: string; onClick: () => void }) 
         event.stopPropagation();
         onClick();
       }}
-      className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
+      className="grid size-5 shrink-0 place-items-center rounded-[--radius-xs] pointer-coarse:size-8 text-ink-3 opacity-0 transition hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
     >
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
@@ -518,7 +600,7 @@ function StarToggle({ starred, onToggle }: { starred: boolean; onToggle: () => v
         onToggle();
       }}
       className={[
-        'grid size-5 shrink-0 place-items-center rounded-[--radius-xs] transition',
+        'grid size-5 shrink-0 place-items-center rounded-[--radius-xs] pointer-coarse:size-8 transition',
         starred
           ? 'opacity-100'
           : 'text-ink-3 opacity-0 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100',

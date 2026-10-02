@@ -90,7 +90,7 @@ export function Sessions() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[760px] px-6 py-9">
+    <div className="mx-auto w-full max-w-[760px] px-6 py-9 max-md:px-4 max-md:py-6">
       <h1 className="text-[17px]">Where you are signed in</h1>
       <p className="mt-1.5 max-w-[60ch] text-[12.5px] leading-relaxed text-ink-3">
         Every browser and command line with access to this account. Signing one out takes effect

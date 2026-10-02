@@ -58,7 +58,7 @@ export function NotificationsPanel({
   const unread = items?.filter((item) => !item.read).length ?? 0;
 
   return (
-    <div className="oa-pop absolute bottom-2 left-[calc(100%+8px)] z-30 flex max-h-[70vh] w-[320px] flex-col overflow-hidden rounded-[--radius-lg] border border-line bg-surface shadow-[--shadow-pop]">
+    <div className="oa-pop absolute bottom-2 left-[calc(100%+8px)] z-30 flex max-h-[70vh] w-[320px] flex-col overflow-hidden rounded-[--radius-lg] border border-line bg-surface shadow-[--shadow-pop] max-md:fixed max-md:inset-x-2 max-md:bottom-2 max-md:w-auto">
       <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-line px-3">
         <h2 className="text-[12px] font-semibold uppercase tracking-[0.05em] text-ink-3">
           Notifications
