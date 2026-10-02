@@ -22,6 +22,7 @@ import { ThemeControl } from './ThemeControl.js';
 import { groupByWorkspace, INBOX_ID, type ListedArtifact } from '../workspaces.js';
 import { WorkspaceDialog, MoveDialog } from './WorkspaceDialogs.js';
 import { useNarrowScreen } from '../viewport.js';
+import { SlidingTitle } from './SlidingTitle.js';
 
 const COLLAPSE_PREFERENCE = 'oa.sidebar.collapsed';
 const DRAG_TYPE = 'application/x-kite-artifact';
@@ -547,7 +548,7 @@ function ArtifactLink({
     >
       <TypeIcon type={type} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] leading-[1.35]">{title}</span>
+        <SlidingTitle text={title} className="text-[12.5px] leading-[1.35]" />
         {subtitle && <span className="block truncate text-[11px] text-ink-3">{subtitle}</span>}
       </span>
       {onRequestMove && <MoveButton title={title} onClick={onRequestMove} />}
