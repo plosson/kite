@@ -319,6 +319,24 @@
 }
 
 /*
+ * Typing on a phone.
+ *
+ * iOS zooms the whole page into any field whose text is smaller than 16px, and
+ * does not zoom back out. The interface's 13px is right on a desk and wrong
+ * here, so fields grow to the size that keeps the page still.
+ *
+ * Unlayered on purpose: it has to beat the size utilities written on each
+ * field, and anything inside a layer would lose to them.
+ */
+@media (max-width: 47.999rem) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/*
  * How a rendered artifact looks.
  *
  * The one place in the product that is set for reading rather than scanning:
