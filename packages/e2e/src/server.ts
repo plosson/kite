@@ -50,6 +50,8 @@ export interface RunningServer {
    * request can do that, which is the point, so it goes to the database.
    */
   forgetDescription: (id: string) => void;
+  /** Moves when one version was written, so a timeline can be tested on chosen times. */
+  stampVersion: (id: string, version: number, at: string) => void;
   /** Republishes one, the way an agent acting on a comment would. */
   update: (body: {
     id: string;
@@ -183,6 +185,11 @@ export async function startServer(): Promise<RunningServer> {
       database.raw
         .prepare('UPDATE artifacts SET description = NULL, summary = NULL, summary_version = NULL WHERE id = ?')
         .run(id);
+    },
+    stampVersion: (id, version, at) => {
+      database.raw
+        .prepare('UPDATE artifact_versions SET created_at = ? WHERE artifact_id = ? AND version = ?')
+        .run(at, id, version);
     },
     update: async ({ id, content, baseVersion }) => {
       const response = await as(`/api/artifacts/${id}`, {
