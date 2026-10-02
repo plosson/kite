@@ -140,7 +140,6 @@ bottom of the sidebar to open "Where you are signed in", mint a token under
 | --- | --- |
 | `packages/server` | Hono API, SQLite via Drizzle, auth, sharing, comments |
 | `packages/web` | React and Vite front end |
-| `packages/cli` | The `open-artifact` command the agent runs |
 | `packages/shared` | Types and validation both sides use |
 | `packages/e2e` | Playwright tests against a real browser |
 | `skill/` | The agent instructions, which double as the Claude Code plugin |
