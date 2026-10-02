@@ -181,6 +181,53 @@ describe('writing the preview into the shell', () => {
   });
 });
 
+describe('a shell that has lost a tag, or a title full of dollars', () => {
+  const BARE = [
+    '<!doctype html>',
+    '<html><head>',
+    '<title>Kite</title>',
+    '<script>document.documentElement.dataset.theme = "dark";</script>',
+    '</head><body><p>body</p></body></html>',
+  ].join('\n');
+
+  it('adds every tag an unfurler reads when the shell has none of them', () => {
+    const html = applyPreview(BARE, { title: 'Notes', description: 'Plain.' }, 'https://kite.test/a/abc');
+    for (const tag of [
+      '<meta name="description" content="Plain." />',
+      '<meta property="og:title" content="Notes" />',
+      '<meta property="og:description" content="Plain." />',
+      '<meta property="og:url" content="https://kite.test/a/abc" />',
+      '<meta name="twitter:title" content="Notes" />',
+      '<meta name="twitter:description" content="Plain." />',
+    ]) {
+      expect(html.split(tag)).toHaveLength(2);
+    }
+    // Into the head, not the body, and the script is left exactly as it was.
+    expect(html.indexOf('og:url')).toBeLessThan(html.indexOf('</head>'));
+    expect(html).toContain('<script>document.documentElement.dataset.theme = "dark";</script>');
+  });
+
+  it('never adds a second tag where there already is one', () => {
+    const once = applyPreview(BARE, { title: 'A', description: 'B' }, 'https://kite.test/a/1');
+    const twice = applyPreview(once, { title: 'C', description: 'D' }, 'https://kite.test/a/2');
+    expect(twice.match(/property="og:url"/g)).toHaveLength(1);
+    expect(twice).toContain('content="https://kite.test/a/2"');
+  });
+
+  it('writes a title or description with $ patterns in it word for word', () => {
+    const html = applyPreview(
+      BARE,
+      { title: "Pricing: $& and $' and $` and $1", description: "Costs $' more, or $& less" },
+      'https://kite.test/a/abc',
+    );
+    expect(html).toContain("<title>Pricing: $&amp; and $&#39; and $` and $1</title>");
+    expect(html).toContain('<meta property="og:description" content="Costs $&#39; more, or $&amp; less" />');
+    // Nothing of the page was pasted into the card.
+    expect(html.match(/<body>/g)).toHaveLength(1);
+    expect(html.match(/<title>/g)).toHaveLength(1);
+  });
+});
+
 describe('reading an opening line out of a document', () => {
   it('skips the title heading and takes the prose under it', () => {
     expect(
