@@ -322,8 +322,9 @@ test('typing in the whole source survives an unrelated re-render', async ({ page
 
   // Anything that re-renders the page around the editor used to refetch the
   // source and refill the box, throwing this away.
-  await page.getByRole('button', { name: 'Comments' }).click();
-  await page.getByRole('button', { name: 'Comments' }).click();
+  // Exact: the panel's own "Hide comments" button would match too.
+  await page.getByRole('button', { name: 'Comments', exact: true }).click();
+  await page.getByRole('button', { name: 'Comments', exact: true }).click();
 
   await expect(whole).toHaveValue('# Typed by hand\n');
 });
