@@ -42,7 +42,14 @@ export interface RunningServer {
     type: 'markdown' | 'html';
     content: string;
     title?: string;
+    description?: string;
+    summary?: string;
   }) => Promise<PublishedArtifact>;
+  /**
+   * Makes a document look published before descriptions were required. No
+   * request can do that, which is the point, so it goes to the database.
+   */
+  forgetDescription: (id: string) => void;
   /** Republishes one, the way an agent acting on a comment would. */
   update: (body: {
     id: string;
@@ -171,6 +178,11 @@ export async function startServer(): Promise<RunningServer> {
       });
       if (!response.ok) throw new Error(`publish failed: ${await response.text()}`);
       return (await response.json()) as PublishedArtifact;
+    },
+    forgetDescription: (id) => {
+      database.raw
+        .prepare('UPDATE artifacts SET description = NULL, summary = NULL, summary_version = NULL WHERE id = ?')
+        .run(id);
     },
     update: async ({ id, content, baseVersion }) => {
       const response = await as(`/api/artifacts/${id}`, {
