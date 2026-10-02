@@ -77,6 +77,7 @@ export function Home({
               key={artifact.id}
               slug={artifact.slug}
               title={artifact.title}
+              description={artifact.description}
               type={artifact.type}
               updatedAt={artifact.updatedAt}
               byline={artifact.ownerId === user.id ? undefined : (artifact.ownerName ?? artifact.ownerEmail ?? undefined)}
@@ -104,6 +105,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 function Row({
   slug,
   title,
+  description,
   type,
   updatedAt,
   byline,
@@ -112,6 +114,8 @@ function Row({
 }: {
   slug: string;
   title: string;
+  /** One line from its publisher, shown under the title. Null on older documents. */
+  description: string | null;
   type: 'markdown' | 'html';
   updatedAt: string;
   byline?: string;
@@ -140,6 +144,11 @@ function Row({
           <span className="block truncate text-[13px] font-medium text-ink group-hover:text-accent">
             {title}
           </span>
+          {description && (
+            <span className="block truncate text-[12px] text-ink-3" title={description}>
+              {description}
+            </span>
+          )}
           {byline && <span className="block truncate text-[11.5px] text-ink-3">{byline}</span>}
         </span>
 
