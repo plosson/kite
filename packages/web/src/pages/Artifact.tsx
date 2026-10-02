@@ -157,6 +157,8 @@ export function Artifact({ slug }: { slug: string }) {
           owner already knows what is in their own, so they are spared it. */}
       {artifact.isPublic === 1 && !isOwner && <CautionBar />}
 
+      <About description={artifact.description} summary={artifact.summary} />
+
       <div className="flex min-h-0 flex-1">
         <Body
           slug={slug}
@@ -274,6 +276,8 @@ export function PublicArtifact({
       </Bar>
       {/* Everybody reading a public artifact signed out is a stranger to it. */}
       <CautionBar />
+
+      <About description={artifact.description} summary={artifact.summary} />
 
       <div className="flex min-h-0 flex-1">
         <Body
@@ -436,6 +440,46 @@ function CautionBar() {
         or following links to other sites.
       </span>
     </div>
+  );
+}
+
+/**
+ * What the document is, in its publisher's own words, above the document.
+ *
+ * The description is one line, so it is always shown. The summary is up to ten
+ * lines, which would push the document itself down on every visit, so it waits
+ * behind a toggle. A document from before either was required has neither, and
+ * shows nothing rather than an empty strip.
+ */
+function About({ description, summary }: { description: string | null; summary: string | null }) {
+  const [open, setOpen] = useState(false);
+  if (!description && !summary) return null;
+
+  return (
+    <section
+      aria-label="About this document"
+      className="shrink-0 border-b border-line px-4 py-1.5 text-[12px] leading-snug text-ink-2 max-md:px-3"
+    >
+      <div className="flex items-baseline gap-3">
+        {description && <p className="min-w-0 flex-1">{description}</p>}
+        {summary && (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls="document-summary"
+            onClick={() => setOpen((on) => !on)}
+            className="ml-auto shrink-0 text-[11.5px] text-ink-3 transition-colors hover:text-ink"
+          >
+            {open ? 'Hide summary' : 'Summary'}
+          </button>
+        )}
+      </div>
+      {summary && open && (
+        <p id="document-summary" className="mt-1.5 mb-0.5 whitespace-pre-line text-ink-2">
+          {summary}
+        </p>
+      )}
+    </section>
   );
 }
 
