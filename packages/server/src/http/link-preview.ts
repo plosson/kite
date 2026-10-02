@@ -98,7 +98,10 @@ export function applyPreview(shell: string, copy: PreviewCopy, canonicalUrl: str
   const title = escapeHtml(copy.title);
   const description = escapeHtml(copy.description);
 
-  let html = shell.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+  // Every replacement is a function, never a string: a string would read "$&"
+  // or "$'" in a document's own title as instructions to paste parts of the
+  // page into the card.
+  let html = shell.replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${title}</title>`);
   html = replaceMeta(html, 'name', 'description', description);
   html = replaceMeta(html, 'property', 'og:title', title);
   html = replaceMeta(html, 'property', 'og:description', description);
@@ -108,13 +111,20 @@ export function applyPreview(shell: string, copy: PreviewCopy, canonicalUrl: str
   return html;
 }
 
-/** Swaps the content of one meta tag, however it happens to be wrapped. */
+/**
+ * Swaps the content of one meta tag, however it happens to be wrapped, or adds
+ * it when the shell has none. Adding is what keeps a card whole when somebody
+ * edits the shell: og:url was once taken out of it with a hard-coded address,
+ * and every card quietly lost its link.
+ */
 function replaceMeta(html: string, attribute: 'name' | 'property', key: string, value: string): string {
+  const tag = `<meta ${attribute}="${key}" content="${value}" />`;
   // The shell writes some of these across several lines, so the pattern has to
   // cross newlines. Anchored on the attribute pair so it can only ever match the
   // one tag it was asked for.
   const pattern = new RegExp(`<meta\\s+${attribute}="${escapeRegExp(key)}"[\\s\\S]*?/>`, 'i');
-  return html.replace(pattern, `<meta ${attribute}="${key}" content="${value}" />`);
+  if (pattern.test(html)) return html.replace(pattern, () => tag);
+  return html.replace(/<\/head>/i, () => `    ${tag}\n  </head>`);
 }
 
 function escapeRegExp(text: string): string {

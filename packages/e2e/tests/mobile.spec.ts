@@ -81,7 +81,7 @@ test('opening comments on a phone does not change what a desk remembers', async 
   await expect(page.getByRole('button', { name: 'Hide comments' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Show comments' })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Comments' }).tap();
+  await page.getByRole('button', { name: 'Comments', exact: true }).tap();
   await expect(page.getByRole('button', { name: 'Hide comments' })).toBeVisible();
   await page.getByRole('button', { name: 'Hide comments' }).tap();
 
@@ -92,7 +92,7 @@ test('opening comments on a phone does not change what a desk remembers', async 
   expect(stored).toEqual([null, null]);
 
   // And a reload is closed again, rather than remembering the phone's choice.
-  await page.getByRole('button', { name: 'Comments' }).tap();
+  await page.getByRole('button', { name: 'Comments', exact: true }).tap();
   await page.reload();
   await expect(page.locator('article').getByRole('heading', { name: 'Plan' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Hide comments' })).toHaveCount(0);
