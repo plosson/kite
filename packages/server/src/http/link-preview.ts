@@ -18,7 +18,8 @@
  * document's title. Reading `isPublic` and nothing else makes that impossible
  * rather than unlikely.
  *
- *   public, live      ->  the document's own title and opening line
+ *   public, live      ->  the document's own title and description, or its
+ *                         opening line when it has none
  *   anything else     ->  that an artifact is here, and nothing about it
  *   no such artifact  ->  the site's ordinary card
  *
@@ -72,7 +73,11 @@ export function previewFor(artifact: ArtifactDetail, now: string): PreviewCopy {
   if (isExpired(artifact.expiresAt, now)) return EXPIRED_PREVIEW;
   if (!artifact.isPublic) return PRIVATE_PREVIEW;
 
-  const description = deriveDescription(artifact.type, artifact.content, artifact.title);
+  // The line its publisher wrote says what it is better than any sentence lifted
+  // from it. Documents from before descriptions were required have none, so
+  // they fall back to the opening line.
+  const description =
+    artifact.description ?? deriveDescription(artifact.type, artifact.content, artifact.title);
   return {
     title: artifact.title,
     // A public document with nothing readable in it — an empty file, a page of

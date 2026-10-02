@@ -38,6 +38,9 @@ function artifact(over: Partial<ArtifactDetail> = {}): ArtifactDetail {
     content: '# Quarterly review\n\nRevenue is up eighteen percent on the quarter.\n',
     isPublic: 1,
     expiresAt: null,
+    description: null,
+    summary: null,
+    summaryVersion: null,
     version: 1,
     createdAt: NOW,
     updatedAt: NOW,
@@ -84,6 +87,29 @@ describe('what a link preview is allowed to say', () => {
     // the other way round would keep publishing a document after its link died.
     const stale = artifact({ isPublic: 1, expiresAt: '2020-01-01T00:00:00.000Z' });
     expect(previewFor(stale, NOW)).toEqual(EXPIRED_PREVIEW);
+  });
+
+  it('shows the description its publisher wrote, rather than the opening line', () => {
+    const described = artifact({ description: 'How the quarter went, for the board.' });
+    expect(previewFor(described, NOW).description).toBe('How the quarter went, for the board.');
+  });
+
+  it('never shows the description of a private document', () => {
+    const secret = artifact({ isPublic: 0, description: 'Who goes in the Gemini layoffs.' });
+    const copy = previewFor(secret, NOW);
+    expect(copy).toEqual(PRIVATE_PREVIEW);
+    expect(`${copy.title} ${copy.description}`).not.toContain('Gemini');
+  });
+
+  it('never shows the description once the link has expired', () => {
+    const stale = artifact({ expiresAt: '2026-08-30T00:00:00.000Z', description: 'Board notes.' });
+    expect(previewFor(stale, NOW)).toEqual(EXPIRED_PREVIEW);
+  });
+
+  it('never shows the summary, which is longer than a card and not written for one', () => {
+    const summarised = artifact({ description: 'Short.', summary: 'Line one of the summary.\nLine two.' });
+    const copy = previewFor(summarised, NOW);
+    expect(`${copy.title} ${copy.description}`).not.toContain('Line one');
   });
 
   it('falls back to saying what it is when a public document reads as nothing', () => {
@@ -244,6 +270,7 @@ describe.runIf(existsSync(resolve(process.cwd(), 'public/index.html')))(
       const published = await owner.publish({
         type: 'markdown',
         content: '# Quarterly review\n\nRevenue is up eighteen percent.\n',
+        description: 'Revenue is up eighteen percent.',
       });
       const madePublic = await owner.as(`/api/artifacts/${published.id}/sharing/public`, {
         ...jsonBody({ isPublic: true }),
@@ -289,6 +316,55 @@ describe.runIf(existsSync(resolve(process.cwd(), 'public/index.html')))(
         expect(html).toContain('<title>Kite</title>');
         expect(html).not.toContain(PRIVATE_PREVIEW.title);
       }
+    });
+  },
+);
+
+describe.runIf(existsSync(resolve(process.cwd(), 'public/index.html')))(
+  'a publisher-written description on the card',
+  () => {
+    let server: TestServer;
+
+    beforeEach(() => {
+      server = createTestServer({ SIGNUP_MODE: 'open' }, { serveWebApp: true });
+    });
+
+    afterEach(() => {
+      server.close();
+    });
+
+    it('is escaped, so a description cannot close the tag or add markup', async () => {
+      const owner = await signIn(server, 'owner@example.com');
+      const published = await owner.publish({
+        type: 'markdown',
+        content: '# Notes\n\nPlain text.\n',
+        description: '"/><script>alert(1)</script> & more',
+      });
+      await owner.as(`/api/artifacts/${published.id}/sharing/public`, {
+        ...jsonBody({ isPublic: true }),
+        method: 'PUT',
+      });
+
+      const html = await (await server.request(`/a/${published.slug}`)).text();
+      expect(html).not.toContain('<script>alert(1)</script>');
+      expect(html).toContain('&quot;/&gt;&lt;script&gt;alert(1)&lt;/script&gt; &amp; more');
+    });
+
+    it('follows a description rewritten without a new version', async () => {
+      const owner = await signIn(server, 'owner@example.com');
+      const published = await owner.publish({ type: 'markdown', content: '# Notes\n\nPlain text.\n' });
+      await owner.as(`/api/artifacts/${published.id}/sharing/public`, {
+        ...jsonBody({ isPublic: true }),
+        method: 'PUT',
+      });
+      await owner.as(`/api/artifacts/${published.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'A better line.' }),
+      });
+
+      const html = await (await server.request(`/a/${published.slug}`)).text();
+      expect(html).toContain('<meta property="og:description" content="A better line." />');
     });
   },
 );
