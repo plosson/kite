@@ -98,31 +98,17 @@ something is missing or contradictory.
 
 ## Connect your agent
 
-Three ways in, depending on the assistant.
+Two ways in, depending on the assistant.
 
-**Claude Code** — install the plugin. Two lines, and the skill arrives already
-wired up:
+**Any terminal** (Claude Code, Codex, Cursor, and friends) — the command line
+is [agentio](https://github.com/plosson/agentio). Hand your assistant one
+sentence and let it set itself up:
 
-```
-/plugin marketplace add iBala/open-artifact
-/plugin install open-artifact@open-artifact
-```
+> Set up Kite for me: read `https://kite.example.com/setup.md` and follow it.
 
-The first time it runs, the skill installs the `open-artifact` command line and
-walks you through signing in. To point it at your own instance rather than
-open-artifact.com, add your fork's marketplace instead — the plugin is the
-`skill/` folder, so a fork carries it along with everything else.
-
-**Any other terminal** (Codex, Cursor, and friends) — hand your
-assistant one sentence and let it set itself up:
-
-> Set up Open Artifact for me. Install the CLI —
-> `npm install -g open-artifact --registry https://registry.npmjs.org/` — then
-> read `https://open-artifact.com/setup.md` and follow it.
-
-Every instance serves its own `/setup.md`, so swap in your own address when you
-self-host. That page walks the assistant through installing, signing you in, and
-saving the skill. The skill itself lives in `skill/`.
+Every instance serves its own `/setup.md`, pointing at itself. That page walks
+the assistant through installing agentio, signing you in with
+`agentio kite profile add`, and saving the skill `agentio skill kite` prints.
 
 **No terminal** (Claude on the web, ChatGPT) — the hosted MCP endpoint. Add
 `https://artifacts.example.com/mcp` as a custom connector in the app's
@@ -142,7 +128,6 @@ bottom of the sidebar to open "Where you are signed in", mint a token under
 | `packages/web` | React and Vite front end |
 | `packages/shared` | Types and validation both sides use |
 | `packages/e2e` | Playwright tests against a real browser |
-| `skill/` | The agent instructions, which double as the Claude Code plugin |
 | `deploy/` | Compose file, environment template, smoke test |
 
 The database is one SQLite file. Back that file up and you have backed up the

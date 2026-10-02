@@ -28,21 +28,41 @@ describe('/setup.md', () => {
 
   it('points at this instance, not a hardcoded one', async () => {
     const body = await (await server.request('/setup.md')).text();
-    // The instance URL is woven through the install, login and connector steps.
+    // The instance URL is woven through the connector and sign-in steps.
     expect(body).toContain(`${TEST_BASE_URL}/mcp`);
-    expect(body).toContain(`open-artifact login --instance ${TEST_BASE_URL}`);
+    expect(body).toContain(`agentio kite profile add --url ${TEST_BASE_URL}`);
     expect(body).not.toContain('open-artifact.com');
   });
 
-  it('carries the steps an assistant needs to set itself up', async () => {
+  it('carries the steps an assistant needs to set itself up with agentio', async () => {
     const body = await (await server.request('/setup.md')).text();
-    expect(body).toContain('npm install -g open-artifact --registry https://registry.npmjs.org/');
-    expect(body).toContain('open-artifact whoami --json');
+    expect(body).toContain('curl -LsSf https://agentio.houlahop.com/install | sh');
+    expect(body).toContain('iwr -useb https://agentio.houlahop.com/install.ps1 | iex');
+    expect(body).toContain('agentio skill kite');
+    expect(body).toContain('agentio kite list --json');
+  });
+
+  it('never sends an assistant to the command line Kite no longer has', async () => {
+    const body = await (await server.request('/setup.md')).text();
+    expect(body).not.toMatch(/npm install -g open-artifact/);
+    expect(body).not.toMatch(/open-artifact (login|whoami)/);
+    expect(body).not.toContain('raw.githubusercontent.com');
+  });
+
+  it('signs in without a browser on the assistant\'s side, so it works over SSH', async () => {
+    const body = await (await server.request('/setup.md')).text();
+    expect(body).toContain('--no-browser');
+  });
+
+  it('leaves the vault passphrase to the user, never to the assistant', async () => {
+    const body = await (await server.request('/setup.md')).text();
+    expect(body).toContain('agentio vault init');
+    expect(body).toContain('Never choose or type one for them');
   });
 
   it('tells the assistant where global instructions live, per harness', async () => {
     const body = await (await server.request('/setup.md')).text();
-    // Making Open Artifact the default writes to global instructions, and the
+    // Making Kite the default writes to global instructions, and the
     // right place differs by harness — so the real paths are named.
     expect(body).toContain('~/.claude/CLAUDE.md');
     expect(body).toContain('~/.codex/AGENTS.md');

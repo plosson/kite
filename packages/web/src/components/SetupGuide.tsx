@@ -6,7 +6,7 @@
  * was shared with, most often.
  *
  * It used to paste a forty-line block. Now it hands the assistant a single
- * sentence: install the CLI, then read this instance's /setup.md and follow it.
+ * sentence: read this instance's /setup.md and follow it, which installs agentio.
  * The long instructions live at that URL (served per-instance), so the thing a
  * human copies stays short and the steps can change without changing this.
  */
@@ -14,7 +14,7 @@
 import { useState } from 'react';
 
 export function setupPrompt(instance: string): string {
-  return `Set up Open Artifact for me. Install the CLI — npm install -g open-artifact --registry https://registry.npmjs.org/ — then read ${instance}/setup.md and follow it to sign me in and set yourself up.`;
+  return `Set up Kite for me: read ${instance}/setup.md and follow it to install agentio, sign me in and set yourself up.`;
 }
 
 export function SetupGuide({
@@ -56,7 +56,7 @@ export function SetupGuide({
       </div>
 
       <p className="mt-3 px-1 text-[11px] leading-relaxed text-ink-3">
-        Then just say <span className="text-ink-2">&ldquo;publish that as an artifact&rdquo;</span>.
+        Then just say <span className="text-ink-2">&ldquo;publish that to Kite&rdquo;</span>.
       </p>
 
       {/* The quieter second path. The setup guide covers it too, but somebody

@@ -25,10 +25,11 @@ republished, and say so plainly when the text they pointed at is gone.
 
 ## Connect an assistant
 
-- [Set up an assistant](${baseUrl}/setup.md): install the CLI and follow the
-  steps, or connect over MCP. Terminal assistants run
-  \`npm install -g open-artifact\` and read ${baseUrl}/setup.md; assistants with
-  no terminal add ${baseUrl}/mcp as a custom connector.
+- [Set up an assistant](${baseUrl}/setup.md): install the command line and
+  follow the steps, or connect over MCP. Terminal assistants read
+  ${baseUrl}/setup.md, which installs agentio and signs in with
+  \`agentio kite profile add\`; assistants with no terminal add ${baseUrl}/mcp
+  as a custom connector.
 
 ## Docs and source
 

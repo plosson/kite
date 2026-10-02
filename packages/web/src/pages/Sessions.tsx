@@ -123,7 +123,7 @@ export function Sessions() {
       <Group title="Command lines">
         {tokens.length === 0 && !loading ? (
           <EmptyState title="No command line is connected">
-            Run <Code>open-artifact login</Code> in a terminal to connect one.
+            Run <Code>agentio kite profile add</Code> in a terminal to connect one.
           </EmptyState>
         ) : (
           tokens.map((token) => (

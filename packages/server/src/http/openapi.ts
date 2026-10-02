@@ -79,7 +79,7 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'POST /api/auth/cli-token': {
     summary: 'Exchange an emailed code for a command-line token',
     description:
-      'The terminal counterpart of verify-code. Sends back a 90-day API token rather than setting a session cookie, so `open-artifact login` can sign in with the same emailed code the website uses. Same single use, same five attempts, same one message for every failure.',
+      'The terminal counterpart of verify-code. Sends back a 90-day API token rather than setting a session cookie, so a command line can sign in with the same emailed code the website uses. Same single use, same five attempts, same one message for every failure.',
     auth: 'none',
     responses: {
       '200': 'A token, the address it belongs to, and when it expires',
@@ -812,7 +812,7 @@ export function buildOpenApiDocument(baseUrl: string): Record<string, unknown> {
         bearerAuth: {
           type: 'http',
           scheme: 'bearer',
-          description: 'A token from `open-artifact login`.',
+          description: 'A token from `agentio kite profile add`, or one minted under "Connect an assistant".',
         },
         sessionCookie: {
           type: 'apiKey',
