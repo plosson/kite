@@ -7,15 +7,15 @@
  */
 
 export function llmsTxt(baseUrl: string): string {
-  return `# Open Artifact
+  return `# Kite
 
-> Open Artifact turns a document your AI assistant writes — a report, a design
+> Kite turns a document your AI assistant writes — a report, a design
 > doc, a dashboard, a write-up — into a web page at a stable URL. You share the
 > link, people comment on the exact line they are reacting to, and the assistant
 > reads those comments back and publishes a new version. Self-hostable and
-> fair-code.
+> fair-code: a modified version of Open Artifact.
 
-Open Artifact publishes HTML and Markdown from any LLM harness (Claude Code,
+Kite publishes HTML and Markdown from any LLM harness (Claude Code,
 Codex, Cursor, and — over a hosted MCP endpoint — Claude on the web or ChatGPT).
 Documents are private by default and can be opened to named people, to everyone
 at an email domain, or to anyone with the link. Markdown renders as a clean
@@ -33,8 +33,10 @@ republished, and say so plainly when the text they pointed at is gone.
 
 ## Docs and source
 
-- [GitHub repository](https://github.com/iBala/open-artifact): source code,
-  self-hosting guide, and issues.
+- [GitHub repository](https://github.com/plosson/kite): source code,
+  self-hosting guide, and [issues](https://github.com/plosson/kite/issues).
+- [Open Artifact](https://github.com/iBala/open-artifact): the project Kite was
+  modified from.
 - [API reference](${baseUrl}/api/docs): the OpenAPI contract the CLI, web app and
   MCP endpoint all speak.
 
@@ -49,6 +51,6 @@ republished, and say so plainly when the text they pointed at is gone.
 - Licence: Sustainable Use License (fair-code) — free to self-host and use
   internally; cannot be sold or run as a commercial hosted service without a
   commercial licence.
-- Contact: hello@open-artifact.com
+- Contact: https://github.com/plosson/kite/issues
 `;
 }

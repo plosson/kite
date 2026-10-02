@@ -1,29 +1,22 @@
 # Kite
 
-> **Kite is a modified fork of [Open Artifact](https://github.com/iBala/open-artifact).**
+> **Kite is a modified version of [Open Artifact](https://github.com/iBala/open-artifact).**
 > It is not the original product and is not endorsed by its authors. Kite is
 > distributed free of charge, for non-commercial purposes, under the same
 > [Sustainable Use License](LICENSE) as Open Artifact. It is source-available
-> (fair-code), not OSI-approved open source. The changes made in this fork are
-> recorded in its git history.
-
-The documentation below is Open Artifact's and applies to Kite unless this fork
-says otherwise.
-
----
-
-# Open Artifact
+> (fair-code), not OSI-approved open source. The changes made to it are recorded
+> in this repository's git history.
 
 Your coding agent writes a report, a design doc, a dashboard. Right now that
 lands as a file on your laptop that nobody else can see.
 
-Open Artifact gives it a URL. The agent publishes, you get a link, you share it
+Kite gives it a URL. The agent publishes, you get a link, you share it
 with the people who need to read it. They comment on the exact paragraph they
 are reacting to, and the agent reads those comments back and revises. You host
 all of it yourself.
 
-- **Publish from the agent.** One command, or the bundled skill so the agent
-  does it without being asked.
+- **Publish from the agent.** With [agentio](https://github.com/plosson/agentio)
+  from a terminal, or over MCP from Claude on the web or ChatGPT.
 - **HTML and Markdown.** HTML runs in a sandbox with no access to your session.
   Markdown is rendered with headings, tables and syntax highlighting.
 - **Share deliberately.** Private by default. Open it to named people, to
@@ -38,20 +31,13 @@ all of it yourself.
 - **Light and dark.** Follows your system by default, or pick one and it sticks.
   Readers with no account can change it too, from the bar above the document.
 
-## Use it free at open-artifact.com
-
-Don't want to run a server? The hosted instance is live and free:
-**[open-artifact.com](https://open-artifact.com)**. Sign up with your email,
-connect your assistant, and start publishing — nothing to deploy. Everything
-below this is for when you'd rather host your own.
-
-[![Open Artifact — a shared document with a line comment and a tagged reply](docs/comment-thread.png)](https://open-artifact.com)
+![A shared document with a line comment and a tagged reply](docs/comment-thread.png)
 
 ## Try it in two minutes
 
 ```bash
-git clone https://github.com/iBala/open-artifact.git
-cd open-artifact
+git clone https://github.com/plosson/kite.git
+cd kite
 pnpm install
 pnpm --filter @open-artifact/server dev
 ```
@@ -150,15 +136,14 @@ should exist before the code that satisfies it.
 
 ## Found a bug, or want something?
 
-Open an issue on GitHub: **[github.com/iBala/open-artifact/issues](https://github.com/iBala/open-artifact/issues)**.
+Open an issue on GitHub: **[github.com/plosson/kite/issues](https://github.com/plosson/kite/issues)**.
 Bug reports, feature requests and rough ideas are all welcome — that's where we
 track what to build next.
 
 ## Licence
 
-Open Artifact is **fair-code**, under the [Sustainable Use License](LICENSE) —
-the same licence n8n uses. You can self-host and modify it for free, including
-inside a company. You cannot sell it or run it as a commercial hosted service
-without a commercial licence. For that, or for an enterprise arrangement
-(SSO/SAML, audit logs, dedicated hosting), email
-[hello@open-artifact.com](mailto:hello@open-artifact.com).
+Kite is **fair-code**, under the [Sustainable Use License](LICENSE) it inherits
+from Open Artifact — the same licence n8n uses. You can self-host and modify it
+for free, including inside a company. You cannot sell it or run it as a
+commercial hosted service. A commercial licence can only come from Open
+Artifact's authors, at [hello@open-artifact.com](mailto:hello@open-artifact.com).

@@ -220,7 +220,7 @@ function readSmtp(env: Env, isProduction: boolean, problems: Problems): SmtpConf
   const from = read(env, 'MAIL_FROM');
   if (from === undefined) {
     problems.add(
-      'MAIL_FROM is required when SMTP_HOST is set. Use the address emails are sent from, for example: Open Artifact <no-reply@example.com>',
+      'MAIL_FROM is required when SMTP_HOST is set. Use the address emails are sent from, for example: Kite <no-reply@example.com>',
     );
   }
   return {

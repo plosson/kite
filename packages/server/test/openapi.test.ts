@@ -60,7 +60,7 @@ describe('the document served at /api/docs', () => {
 
     const document = (await response.json()) as Record<string, unknown>;
     expect(document.openapi).toBe('3.1.0');
-    expect(document.info).toMatchObject({ title: 'Open Artifact' });
+    expect(document.info).toMatchObject({ title: 'Kite' });
     expect(Object.keys(document.paths as object).length).toBeGreaterThan(10);
   });
 

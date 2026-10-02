@@ -20,7 +20,7 @@ export function start(): { stop: () => Promise<void>; port: number } {
     config = loadConfig(process.env);
   } catch (error) {
     if (error instanceof ConfigError) {
-      process.stderr.write(`\nOpen Artifact cannot start.\n\n${error.message}\n\n`);
+      process.stderr.write(`\nKite cannot start.\n\n${error.message}\n\n`);
       process.exit(1);
     }
     throw error;

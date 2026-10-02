@@ -146,7 +146,7 @@ function pendingBody(input: { code: string; email: string; label: string | null 
   <h1>Approve this sign-in?</h1>
   <p class="muted">
     ${input.label ? `<strong>${escapeHtml(input.label)}</strong> is` : 'A program is'}
-    asking to use Open Artifact as <strong>${escapeHtml(input.email)}</strong>.
+    asking to use Kite as <strong>${escapeHtml(input.email)}</strong>.
     It will be able to publish, change and delete your artifacts.
   </p>
 
