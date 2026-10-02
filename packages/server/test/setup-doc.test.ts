@@ -87,15 +87,21 @@ describe('/llms.txt', () => {
     expect(response.headers.get('content-type')).toContain('text/plain');
   });
 
-  it('describes the project and points at this instance', async () => {
+  it('describes Kite and points at this instance', async () => {
     const body = await (await server.request('/llms.txt')).text();
-    expect(body).toContain('# Open Artifact');
+    expect(body).toContain('# Kite');
     expect(body).toContain(`${TEST_BASE_URL}/setup.md`);
-    expect(body).toContain('github.com/iBala/open-artifact');
+    expect(body).toContain('github.com/plosson/kite');
     // Instance URLs are dynamic; the hardcoded prod address must not leak in.
-    // (The hello@open-artifact.com support address is a fixed contact, not an
-    // instance URL, so it is allowed.)
     expect(body).not.toContain('https://open-artifact.com');
+  });
+
+  it('names the project it came from, but never sends anybody to it for help', async () => {
+    const body = await (await server.request('/llms.txt')).text();
+    expect(body).toContain('modified version of Open Artifact');
+    expect(body).toContain('https://github.com/plosson/kite/issues');
+    expect(body).not.toContain('hello@open-artifact.com');
+    expect(body).not.toContain('github.com/iBala/open-artifact/issues');
   });
 
   it('answers /llm.txt as an alias', async () => {

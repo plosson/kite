@@ -28,8 +28,8 @@ export function termsDoc(input: TermsDocInput): string {
 
 **Instance:** ${host} · **Last updated:** 14 August 2026
 
-These terms cover using ${host}. They are not the software licence — Open
-Artifact's source is under the [Sustainable Use License](https://github.com/iBala/open-artifact/blob/main/LICENSE),
+These terms cover using ${host}. They are not the software licence — Kite's
+source is under the [Sustainable Use License](https://github.com/plosson/kite/blob/main/LICENSE),
 and running your own copy is governed by that instead.
 
 ## What you are agreeing to
@@ -38,7 +38,7 @@ Signing in means you accept these terms. If you do not, do not sign in.
 
 ## What the service does
 
-Open Artifact publishes a document you write — Markdown or HTML — as a web page
+Kite publishes a document you write — Markdown or HTML — as a web page
 at a stable URL, lets you control who can see it, and collects comments from the
 people you share it with. That is the whole of it.
 

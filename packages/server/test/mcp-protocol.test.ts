@@ -69,7 +69,7 @@ describe('the handshake', () => {
     const result = body?.result as Record<string, unknown>;
     expect(result.protocolVersion).toBe('2025-06-18');
     expect(result.capabilities).toEqual({ tools: {} });
-    expect((result.serverInfo as { name: string }).name).toBe('Open Artifact');
+    expect((result.serverInfo as { name: string }).name).toBe('Kite');
   });
 
   it('meets an older client on a version they both speak', async () => {

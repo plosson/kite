@@ -40,13 +40,13 @@ export function privacyDoc(input: PrivacyDocInput): string {
 **Instance:** ${host} · **Last updated:** 13 August 2026
 
 This policy describes what ${host} does with your information. ${host} runs
-[Open Artifact](https://github.com/iBala/open-artifact), which anyone can host
-themselves — if you reached this page from a different address, that operator is
+[Kite](https://github.com/plosson/kite), a modified version of [Open Artifact](https://github.com/iBala/open-artifact), which anyone can
+host themselves — if you reached this page from a different address, that operator is
 responsible for their own instance, not this one.
 
 ## What this service is
 
-Open Artifact turns a document — Markdown or HTML — into a web page at a stable
+Kite turns a document — Markdown or HTML — into a web page at a stable
 URL, so it can be shared with named people and commented on. You publish from an
 assistant or the command line; the people you share with read and comment in a
 browser.

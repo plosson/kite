@@ -730,7 +730,7 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'GET /llms.txt': {
     summary: 'A short overview of this project for language models',
     description:
-      'The llmstxt.org convention: a link-first description of what Open Artifact is and how to connect to it, built with this instance\'s own address. Public.',
+      'The llmstxt.org convention: a link-first description of what Kite is and how to connect to it, built with this instance\'s own address. Public.',
     auth: 'none',
     responses: { '200': 'The overview, as plain text' },
   },
@@ -804,13 +804,13 @@ export function buildOpenApiDocument(baseUrl: string): Record<string, unknown> {
   return {
     openapi: OPENAPI_VERSION,
     info: {
-      title: 'Open Artifact',
+      title: 'Kite',
       version: '0.1.0',
       description:
         'Publish HTML and Markdown artifacts, share them, and comment on them. This API is the contract: the command line, the web app and the skill all speak it, and so can anything you build.',
       license: {
         name: 'Sustainable Use License',
-        url: 'https://github.com/iBala/open-artifact/blob/main/LICENSE',
+        url: 'https://github.com/plosson/kite/blob/main/LICENSE',
       },
     },
     servers: [{ url: baseUrl }],

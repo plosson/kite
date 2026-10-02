@@ -385,7 +385,7 @@ export function instanceNameFrom(baseUrl: string): string {
   try {
     return new URL(baseUrl).host;
   } catch {
-    return 'Open Artifact';
+    return 'Kite';
   }
 }
 

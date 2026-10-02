@@ -51,7 +51,7 @@ const MCP_AUTH_FAILURE_LIMIT = { limit: 20, windowSeconds: 3600 };
 const LATEST_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
-const SERVER_INFO = { name: 'Open Artifact', version: '1' };
+const SERVER_INFO = { name: 'Kite', version: '1' };
 
 // JSON-RPC 2.0 error codes.
 const PARSE_ERROR = -32700;
