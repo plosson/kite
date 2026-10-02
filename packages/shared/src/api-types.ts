@@ -48,6 +48,40 @@ export interface ApiErrorBody {
 // Artifacts
 // ---------------------------------------------------------------------------
 
+/**
+ * Limits on what a publisher writes about a document. Refused rather than cut,
+ * so the agent that wrote too much rewrites it instead of shipping half a line.
+ */
+export const ARTIFACT_DESCRIPTION_MAX_LENGTH = 160;
+export const ARTIFACT_SUMMARY_MAX_LINES = 10;
+export const ARTIFACT_SUMMARY_MAX_LENGTH = 1200;
+
+/**
+ * What a publisher is told about the description and summary, word for word
+ * the same in the API description and the MCP tools, so an agent hears one
+ * rule whichever way it connects.
+ */
+export const ARTIFACT_DESCRIPTION_GUIDANCE =
+  `One line, at most ${ARTIFACT_DESCRIPTION_MAX_LENGTH} characters, saying what the document is ` +
+  'and what it is for. Do not repeat the title.';
+
+export const ARTIFACT_SUMMARY_GUIDANCE =
+  `At most ${ARTIFACT_SUMMARY_MAX_LINES} lines and ${ARTIFACT_SUMMARY_MAX_LENGTH} characters on ` +
+  'what the document says: its main points, decisions and open questions. Write it for somebody ' +
+  'deciding whether to open the document.';
+
+/**
+ * Title, description and summary each change less often than the next, and all
+ * three less often than the content. Telling every publisher so is what keeps
+ * a library stable enough to sort.
+ */
+export const ARTIFACT_METADATA_STABILITY =
+  'Title, description and summary are steadier than the content, in that order: the title ' +
+  'changes least often, then the description, then the summary. When you update, leave a field ' +
+  'out to keep it. Change the title only when the subject of the document changed. Change the ' +
+  'description only when its purpose or scope changed. Change the summary only when its main ' +
+  'points changed. A wording fix or a small edit changes none of them.';
+
 export interface ArtifactSummary {
   id: string;
   /** The unguessable part of the artifact's URL. */
@@ -62,6 +96,15 @@ export interface ArtifactSummary {
   expiresAt: string | null;
   type: ArtifactType;
   title: string;
+  /** One line on what it is. Null only on documents published before it was required. */
+  description: string | null;
+  /** Up to ten lines on what it says. Null only on documents published before it was required. */
+  summary: string | null;
+  /**
+   * The version the summary was written against. Behind `version` when the
+   * content changed and the summary did not follow. Null when there is no summary.
+   */
+  summaryVersion: number | null;
   /** Increments on every update. Send it back as `baseVersion` when updating. */
   version: number;
   /** The full viewing URL, so no client has to know how to build one. */
@@ -103,12 +146,18 @@ export interface CreateArtifactRequest {
   content: string;
   /** When given, it is kept as-is and never re-derived by a later update. */
   title?: string;
+  description: string;
+  summary: string;
 }
 
 export interface UpdateArtifactRequest {
   content: string;
   type?: ArtifactType;
   title?: string;
+  /** Left out, the current one is kept. */
+  description?: string;
+  /** Left out, the current one is kept, and falls behind the version. */
+  summary?: string;
   /**
    * The version the caller last read. If it is not the current one the update is
    * refused with `version_conflict`, rather than overwriting somebody's change.

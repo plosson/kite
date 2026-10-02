@@ -22,7 +22,7 @@ const byName = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
 describe('every tool is annotated', () => {
   it('carries all five flags and a title', () => {
-    expect(TOOLS).toHaveLength(10);
+    expect(TOOLS).toHaveLength(14);
     for (const tool of TOOLS) {
       expect(tool.title, `${tool.name} has no title`).toBeTruthy();
       expect(tool.annotations.title).toBe(tool.title);
@@ -75,9 +75,11 @@ describe('what the flags claim, tool by tool', () => {
     }
   });
 
-  it('calls only update_artifact destructive, because only it replaces what a reader sees', () => {
+  it('calls destructive only the two that replace what a reader sees', () => {
+    // update_artifact replaces the content; describe_artifact replaces the title
+    // a reader sees above it. Moving a document is private to its owner, so not.
     const destructive = TOOLS.filter((tool) => tool.annotations.destructiveHint).map((t) => t.name);
-    expect(destructive).toEqual(['update_artifact']);
+    expect(destructive).toEqual(['update_artifact', 'describe_artifact']);
   });
 
   it('calls only share_artifact open-world, because only it emails somebody', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
+import { TEST_DESCRIBED,
   createTestServer,
   signIn,
   TEST_BASE_URL,
@@ -19,11 +19,12 @@ afterEach(() => {
   server.close();
 });
 
-function post(body: unknown, init: RequestInit = {}): Promise<Response> {
+/** Publishes with a description and summary unless the body says otherwise. */
+function post(body: Record<string, unknown>, init: RequestInit = {}): Promise<Response> {
   return owner.as('/api/artifacts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...TEST_DESCRIBED, ...body }),
     ...init,
   });
 }
@@ -72,7 +73,7 @@ describe('publishing an artifact', () => {
       const response = await publisher.as('/api/artifacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'markdown', content: 'x'.repeat(3000) }),
+        body: JSON.stringify({ ...TEST_DESCRIBED, type: 'markdown', content: 'x'.repeat(3000) }),
       });
       expect(response.status).toBe(413);
       const body = (await response.json()) as { error: { code: string; message: string } };

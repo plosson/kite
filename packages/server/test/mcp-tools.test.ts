@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { eq, and } from 'drizzle-orm';
-import {
+import { TEST_DESCRIBED,
   createTestServer,
   jsonBody,
   signIn,
@@ -76,7 +76,7 @@ async function publish(
   format: 'markdown' | 'html' = 'markdown',
   title?: string,
 ): Promise<string> {
-  const result = await call(token, 'publish_artifact', { content, format, ...(title ? { title } : {}) });
+  const result = await call(token, 'publish_artifact', { ...TEST_DESCRIBED, content, format, ...(title ? { title } : {}) });
   const match = /artifact_id: (\S+)/.exec(result.text);
   if (!match) throw new Error(`no artifact id in publish result: ${result.text}`);
   return match[1] as string;
@@ -96,13 +96,13 @@ describe('publish_artifact', () => {
   });
 
   it('refuses a format it was not given as markdown or html', async () => {
-    const result = await call(connectionA.token, 'publish_artifact', { content: '# Hi', format: 'pdf' });
+    const result = await call(connectionA.token, 'publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'pdf' });
     expect(result.isError).toBe(true);
     expect(result.text.toLowerCase()).toContain('markdown');
   });
 
   it('refuses content over the cap, naming the limit', async () => {
-    const result = await call(connectionA.token, 'publish_artifact', {
+    const result = await call(connectionA.token, 'publish_artifact', { ...TEST_DESCRIBED,
       content: 'x'.repeat(1_100_000),
       format: 'markdown',
     });
@@ -130,7 +130,7 @@ describe('publish_artifact', () => {
           jsonrpc: '2.0',
           id: 1,
           method: 'tools/call',
-          params: { name: 'publish_artifact', arguments: { content: '# Two', format: 'markdown' } },
+          params: { name: 'publish_artifact', arguments: { ...TEST_DESCRIBED, content: '# Two', format: 'markdown' } },
         }),
       });
       const result = ((await response.json()) as { result: { isError?: boolean } }).result;
@@ -243,7 +243,7 @@ describe('share_artifact', () => {
           jsonrpc: '2.0',
           id: 1,
           method: 'tools/call',
-          params: { name: 'publish_artifact', arguments: { content: '# Doc', format: 'markdown' } },
+          params: { name: 'publish_artifact', arguments: { ...TEST_DESCRIBED, content: '# Doc', format: 'markdown' } },
         }),
       });
       const id = /artifact_id: (\S+)/.exec(

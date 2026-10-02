@@ -12,6 +12,12 @@
  * is a statement of intent that the code is checked against.
  */
 
+import {
+  ARTIFACT_DESCRIPTION_GUIDANCE,
+  ARTIFACT_METADATA_STABILITY,
+  ARTIFACT_SUMMARY_GUIDANCE,
+} from '@open-artifact/shared';
+
 export const OPENAPI_VERSION = '3.1.0';
 
 interface Operation {
@@ -309,7 +315,8 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'POST /api/artifacts': {
     summary: 'Publish an artifact',
     description:
-      'Markdown or HTML. The artifact belongs to whoever published it. Optional `workspaceId` (a workspace id or name, or "inbox") places it in one of your workspaces; an unknown one refuses the publish.',
+      'Markdown or HTML. The artifact belongs to whoever published it. Optional `workspaceId` (a workspace id or name, or "inbox") places it in one of your workspaces; an unknown one refuses the publish. ' +
+      `Required \`description\`: ${ARTIFACT_DESCRIPTION_GUIDANCE} Required \`summary\`: ${ARTIFACT_SUMMARY_GUIDANCE}`,
     auth: 'required',
     responses: {
       '201': 'Published',
@@ -332,7 +339,8 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'PUT /api/artifacts/:id': {
     summary: 'Replace an artifact’s content',
     description:
-      'Send the version you last read as baseVersion. If it is no longer current the update is refused rather than overwriting somebody’s change. The URL never changes.',
+      'Send the version you last read as baseVersion. If it is no longer current the update is refused rather than overwriting somebody’s change. The URL never changes. ' +
+      `Optional \`title\`, \`description\` and \`summary\`. ${ARTIFACT_METADATA_STABILITY}`,
     auth: 'required',
     responses: {
       '200': 'Updated',
@@ -341,6 +349,19 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '404': 'No such artifact, or it is not yours',
       '409': 'Somebody changed it since you read it',
       '413': 'Larger than this instance allows',
+    },
+  },
+  'PATCH /api/artifacts/:id': {
+    summary: 'Retitle an artifact, or rewrite its description or summary',
+    description:
+      'Send any of `title`, `description` and `summary`; what you leave out is kept. The content is not touched, so no version is written and no baseVersion is needed. A summary sent here is marked as written against the current version. ' +
+      `${ARTIFACT_METADATA_STABILITY} Description: ${ARTIFACT_DESCRIPTION_GUIDANCE} Summary: ${ARTIFACT_SUMMARY_GUIDANCE}`,
+    auth: 'required',
+    responses: {
+      '200': 'Changed',
+      '400': 'Nothing to change, or a field is blank or too long',
+      '401': 'Not signed in',
+      '404': 'No such artifact, or it is not yours',
     },
   },
   'DELETE /api/artifacts/:id': {

@@ -28,7 +28,6 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
-COPY packages/cli/package.json packages/cli/
 RUN pnpm install --frozen-lockfile --filter @open-artifact/shared --filter @open-artifact/server --filter @open-artifact/web
 
 COPY tsconfig.base.json ./

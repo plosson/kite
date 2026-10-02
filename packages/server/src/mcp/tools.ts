@@ -9,6 +9,11 @@
  *    from the CLI, the web, or another assistant is invisible here, and the error
  *    says exactly why rather than pretending it does not exist.
  *
+ *    The three organizing tools are the one exception, on purpose: sorting a
+ *    library only works on the whole library. They reach everything the person
+ *    owns, but only its title, description, summary and placement — never its
+ *    content, its sharing or its comments.
+ *
  * 2. Errors come back as tool results with `isError: true`, never as JSON-RPC
  *    protocol errors, because a protocol error can be swallowed by the client's
  *    harness before the model ever sees it. The dispatcher turns every ApiError
@@ -36,7 +41,14 @@ import {
   DEFAULT_THREAD_CAP,
   MAX_THREAD_CAP,
 } from './render-threads.js';
-import { parseExpiry, describeRemaining, type ExpirySpec } from '@open-artifact/shared';
+import {
+  parseExpiry,
+  describeRemaining,
+  type ExpirySpec,
+  ARTIFACT_DESCRIPTION_GUIDANCE,
+  ARTIFACT_METADATA_STABILITY,
+  ARTIFACT_SUMMARY_GUIDANCE,
+} from '@open-artifact/shared';
 import { nowIso } from '../time.js';
 import { isValidEmail } from '../auth/email-address.js';
 import { sharedArtifactEmail } from '../mail/templates.js';
@@ -108,7 +120,7 @@ const OUTSIDE_CONNECTION =
   'That artifact was published outside this connection, so it cannot be edited here. Open it in the browser to manage it.';
 
 // ---------------------------------------------------------------------------
-// The ten tools
+// The tools
 // ---------------------------------------------------------------------------
 
 const CHOOSE_WORKSPACE =
@@ -144,18 +156,22 @@ const publishArtifact: McpTool = {
       content: { type: 'string', description: 'The document text. Markdown or HTML, never base64.' },
       format: { type: 'string', enum: ['markdown', 'html'], description: 'Stated, never inferred.' },
       title: { type: 'string', description: 'Optional. Derived from the content when left out.' },
+      description: { type: 'string', description: ARTIFACT_DESCRIPTION_GUIDANCE },
+      summary: { type: 'string', description: ARTIFACT_SUMMARY_GUIDANCE },
       workspace: {
         type: 'string',
         description:
           'Which workspace it goes in: a name or id from list_workspaces, or "inbox". Required once the person has any workspace.',
       },
     },
-    required: ['content', 'format'],
+    required: ['content', 'format', 'description', 'summary'],
   },
   run(args, ctx) {
     const content = requireArgString(args, 'content');
     const format = requireFormat(args);
     const title = optionalArgString(args, 'title');
+    const description = requireArgString(args, 'description');
+    const summary = requireArgString(args, 'summary');
     requireWithinContentCap(content);
     const workspace = chooseWorkspace(ctx, args);
 
@@ -168,6 +184,8 @@ const publishArtifact: McpTool = {
       type: format,
       content,
       title,
+      description,
+      summary,
     });
     if (workspace.id !== INBOX_ID) ctx.workspaces.place(ctx.user.id, created.id, workspace.id);
 
@@ -201,7 +219,7 @@ const updateArtifact: McpTool = {
     'and leave the rest alone, then reply on the thread saying what you did. A comment whose ' +
     'passage disappears loses its place, and the person who wrote it is not told why. ' +
     'In HTML, keep the id of any element a comment points at, even when you rewrite what is ' +
-    'inside it — that id is how the comment finds its way back.',
+    'inside it — that id is how the comment finds its way back. ' + ARTIFACT_METADATA_STABILITY,
   inputSchema: {
     type: 'object',
     properties: {
@@ -209,7 +227,15 @@ const updateArtifact: McpTool = {
       content: { type: 'string' },
       base_version: { type: 'integer', description: 'The version you based this edit on.' },
       format: { type: 'string', enum: ['markdown', 'html'] },
-      title: { type: 'string' },
+      title: { type: 'string', description: 'Leave out unless the subject changed.' },
+      description: {
+        type: 'string',
+        description: `Leave out unless the purpose or scope changed. ${ARTIFACT_DESCRIPTION_GUIDANCE}`,
+      },
+      summary: {
+        type: 'string',
+        description: `Leave out unless the main points changed. ${ARTIFACT_SUMMARY_GUIDANCE}`,
+      },
     },
     required: ['artifact_id', 'content', 'base_version'],
   },
@@ -219,6 +245,8 @@ const updateArtifact: McpTool = {
     const baseVersion = requireArgInteger(args, 'base_version');
     const format = optionalFormat(args);
     const title = optionalArgString(args, 'title');
+    const description = optionalArgString(args, 'description');
+    const summary = optionalArgString(args, 'summary');
     requireWithinContentCap(content);
 
     const limited = checkLimit(ctx, 'publish', ctx.config.limits.publishesPerHour);
@@ -228,6 +256,8 @@ const updateArtifact: McpTool = {
       content,
       type: format,
       title,
+      description,
+      summary,
       baseVersion,
     });
 
@@ -268,9 +298,11 @@ const getArtifact: McpTool = {
 
     const head =
       `title: ${artifact.title}\n` +
+      `description: ${artifact.description ?? '(none)'}\n` +
       `format: ${artifact.type}\n` +
       `version: ${artifact.version}\n` +
-      `link: ${urlFor(ctx, artifact.slug)}`;
+      `link: ${urlFor(ctx, artifact.slug)}\n` +
+      `summary${summaryState(artifact)}:\n${artifact.summary ?? '(none)'}`;
 
     return textResult(includeContent ? `${head}\n\n${artifact.content}` : head);
   },
@@ -367,6 +399,156 @@ const createWorkspace: McpTool = {
       description: args.description,
     });
     return textResult(`Created workspace "${created.name}".\nworkspace_id: ${created.id}`);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Organizing: the whole library, but only what is said about each document
+// ---------------------------------------------------------------------------
+
+const ORGANIZE_STEPS =
+  'Propose before you change anything: list the new titles, descriptions and moves you suggest, ' +
+  'with a reason for each, and apply only what the user agrees to. Prefer fewer changes: leave a ' +
+  'title alone unless it is misleading, vague, or inconsistent with its neighbours. Suggest a new ' +
+  'workspace only when several documents share a subject no existing workspace covers. Where a ' +
+  'summary is missing or behind its version, read the document with get_library_document and ' +
+  'write one with describe_artifact.';
+
+const organizeLibrary: McpTool = {
+  name: 'organize_library',
+  annotations: {
+    title: 'Review how documents are titled and sorted',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  description:
+    'Everything this person published, wherever it came from, with each document\'s title, ' +
+    'description, summary and workspace, and every workspace with what belongs in it. Use it ' +
+    'when the user asks to tidy, retitle, sort or reorganize their documents. ' + ORGANIZE_STEPS,
+  inputSchema: { type: 'object', properties: {} },
+  run(_args, ctx) {
+    const owned = ctx.artifacts.listOwnedBy(ctx.user.id);
+    if (owned.length === 0) return textResult('This person has not published anything yet.');
+
+    const placements = ctx.workspaces.placementsFor(ctx.user.id);
+    const documents = owned
+      .map(
+        (row) =>
+          `${row.title}\n` +
+          `  artifact_id: ${row.id}\n` +
+          `  workspace: ${placements.get(row.id) ?? INBOX_ID}\n` +
+          `  description: ${row.description ?? '(none)'}\n` +
+          `  summary${summaryState(row)}:\n${indent(row.summary ?? '(none)', '    ')}`,
+      )
+      .join('\n');
+
+    return textResult(
+      `Workspaces:\n${describeWorkspaces(ctx)}\n\n` +
+        `Documents (${owned.length}), newest change first:\n${documents}\n\n${ORGANIZE_STEPS}`,
+    );
+  },
+};
+
+const getLibraryDocument: McpTool = {
+  name: 'get_library_document',
+  annotations: {
+    title: 'Read one of the person\'s documents to describe it',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  description:
+    'Read any document this person published, wherever it came from, so you can write its ' +
+    'description or summary. Only for organizing: to edit a document, use get_artifact.',
+  inputSchema: {
+    type: 'object',
+    properties: { artifact_id: { type: 'string' } },
+    required: ['artifact_id'],
+  },
+  run(args, ctx) {
+    const artifact = requireOwnedArtifact(ctx, requireArgString(args, 'artifact_id'));
+    return textResult(
+      `title: ${artifact.title}\n` +
+        `description: ${artifact.description ?? '(none)'}\n` +
+        `format: ${artifact.type}\n` +
+        `version: ${artifact.version}\n` +
+        `summary${summaryState(artifact)}:\n${artifact.summary ?? '(none)'}\n\n` +
+        artifact.content,
+    );
+  },
+};
+
+const describeArtifact: McpTool = {
+  name: 'describe_artifact',
+  // Overwrites what was said about the document, so destructive, though the
+  // content itself is never touched. Idempotent: the same words twice land the
+  // same way.
+  annotations: {
+    title: 'Retitle or redescribe a document',
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  description:
+    'Change the title, description or summary of any document this person published, without ' +
+    'changing its content. Send only what should change. Only after the user agreed to it, or ' +
+    'to fill in a description or summary that is missing or behind. ' + ARTIFACT_METADATA_STABILITY,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      artifact_id: { type: 'string' },
+      title: { type: 'string' },
+      description: { type: 'string', description: ARTIFACT_DESCRIPTION_GUIDANCE },
+      summary: { type: 'string', description: ARTIFACT_SUMMARY_GUIDANCE },
+    },
+    required: ['artifact_id'],
+  },
+  run(args, ctx) {
+    const artifact = requireOwnedArtifact(ctx, requireArgString(args, 'artifact_id'));
+    const described = ctx.artifacts.describe(artifact.id, {
+      title: optionalArgString(args, 'title'),
+      description: optionalArgString(args, 'description'),
+      summary: optionalArgString(args, 'summary'),
+    });
+    return textResult(
+      `Now titled "${described.title}".\n` +
+        `description: ${described.description ?? '(none)'}\n` +
+        `summary${summaryState(described)}:\n${described.summary ?? '(none)'}`,
+    );
+  },
+};
+
+const moveArtifact: McpTool = {
+  name: 'move_artifact',
+  // Placement is private to this person and leaves the document as it was, so
+  // nothing is lost by moving it, and moving it twice lands it in one place.
+  annotations: {
+    title: 'Move a document to another workspace',
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  description:
+    'Move any document this person published into one of their workspaces, or back to the ' +
+    'inbox. Only after the user agreed to it. Nobody else sees where it is sorted.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      artifact_id: { type: 'string' },
+      workspace: { type: 'string', description: 'A name or id from list_workspaces, or "inbox".' },
+    },
+    required: ['artifact_id', 'workspace'],
+  },
+  run(args, ctx) {
+    const artifact = requireOwnedArtifact(ctx, requireArgString(args, 'artifact_id'));
+    const workspace = ctx.workspaces.resolve(ctx.user.id, requireArgString(args, 'workspace'));
+    ctx.workspaces.place(ctx.user.id, artifact.id, workspace.id);
+    return textResult(`Moved "${artifact.title}" to ${workspace.name}.`);
   },
 };
 
@@ -640,6 +822,10 @@ const TOOLS: readonly McpTool[] = [
   resolveCommentThread,
   listWorkspaces,
   createWorkspace,
+  organizeLibrary,
+  getLibraryDocument,
+  describeArtifact,
+  moveArtifact,
 ];
 
 const BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
@@ -716,6 +902,20 @@ function requireConnectionArtifact(ctx: McpToolContext, artifactId: string) {
   // cheap and together they say the write is this person's, through this tool.
   if (artifact.ownerId !== ctx.user.id) {
     throw new ApiError('not_found', OUTSIDE_CONNECTION);
+  }
+  return artifact;
+}
+
+/**
+ * Loads an artifact and refuses it unless this person owns it, wherever it was
+ * published from. Only the organizing tools use this; everything else stays
+ * inside its connection.
+ */
+function requireOwnedArtifact(ctx: McpToolContext, artifactId: string) {
+  const exists = ctx.artifacts.connectionIdOf(artifactId) !== undefined;
+  const artifact = exists ? ctx.artifacts.get(artifactId) : null;
+  if (!artifact || artifact.ownerId !== ctx.user.id) {
+    throw new ApiError('not_found', 'There is no document with that id among this person\'s own.');
   }
   return artifact;
 }
@@ -871,6 +1071,21 @@ function chooseWorkspace(ctx: McpToolContext, args: Record<string, unknown>): { 
       `Nothing was published: there is no workspace called "${value}". Choose one of these, or ask the user.\n\n${describeWorkspaces(ctx)}`,
     );
   }
+}
+
+/** How current a summary is, as a suffix for the "summary" label. */
+function summaryState(artifact: { version: number; summary: string | null; summaryVersion: number | null }): string {
+  if (artifact.summary === null || artifact.summaryVersion === null) return ' (missing)';
+  const behind = artifact.version - artifact.summaryVersion;
+  if (behind <= 0) return '';
+  return ` (written for version ${artifact.summaryVersion}, ${behind} version${behind === 1 ? '' : 's'} behind)`;
+}
+
+function indent(text: string, prefix: string): string {
+  return text
+    .split('\n')
+    .map((line) => prefix + line)
+    .join('\n');
 }
 
 function textResult(text: string): McpToolResult {

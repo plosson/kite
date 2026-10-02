@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestServer, signIn, jsonBody, type TestServer, type SignedInUser } from './helpers/server.js';
+import { TEST_DESCRIBED, createTestServer, signIn, jsonBody, type TestServer, type SignedInUser } from './helpers/server.js';
 
 /**
  * Workspaces through MCP.
@@ -44,14 +44,14 @@ async function makeWorkspace(name: string, description: string) {
 
 describe('publishing with workspaces', () => {
   it('publishes without a workspace when the person has none', async () => {
-    const result = await call('publish_artifact', { content: '# Hi', format: 'markdown' });
+    const result = await call('publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'markdown' });
     expect(result.isError).toBe(false);
     expect(result.text).toContain('workspace: Inbox');
   });
 
   it('refuses to publish without a workspace once one exists, and lists them', async () => {
     await makeWorkspace('Research', 'Papers and literature notes');
-    const result = await call('publish_artifact', { content: '# Hi', format: 'markdown' });
+    const result = await call('publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'markdown' });
     expect(result.isError).toBe(true);
     expect(result.text).toContain('Research');
     expect(result.text).toContain('Papers and literature notes');
@@ -62,7 +62,7 @@ describe('publishing with workspaces', () => {
 
   it('refuses an unknown workspace and creates nothing', async () => {
     await makeWorkspace('Research', 'Papers');
-    const result = await call('publish_artifact', { content: '# Hi', format: 'markdown', workspace: 'Reserch' });
+    const result = await call('publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'markdown', workspace: 'Reserch' });
     expect(result.isError).toBe(true);
     expect(result.text).toContain('Research');
     expect(await kiteCount()).toBe(0);
@@ -70,14 +70,14 @@ describe('publishing with workspaces', () => {
 
   it('refuses a workspace that is not text', async () => {
     await makeWorkspace('Research', 'Papers');
-    const result = await call('publish_artifact', { content: '# Hi', format: 'markdown', workspace: 3 });
+    const result = await call('publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'markdown', workspace: 3 });
     expect(result.isError).toBe(true);
     expect(await kiteCount()).toBe(0);
   });
 
   it('matches the name ignoring case, and places the kite there', async () => {
     await makeWorkspace('Research', 'Papers');
-    const result = await call('publish_artifact', { content: '# Hi', format: 'markdown', workspace: 'rESEARCH' });
+    const result = await call('publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'markdown', workspace: 'rESEARCH' });
     expect(result.isError, result.text).toBe(false);
     expect(result.text).toContain('workspace: Research');
 
@@ -87,7 +87,7 @@ describe('publishing with workspaces', () => {
 
   it('accepts inbox explicitly when workspaces exist', async () => {
     await makeWorkspace('Research', 'Papers');
-    const result = await call('publish_artifact', { content: '# Hi', format: 'markdown', workspace: 'inbox' });
+    const result = await call('publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'markdown', workspace: 'inbox' });
     expect(result.isError).toBe(false);
     expect(result.text).toContain('workspace: Inbox');
   });
@@ -96,7 +96,7 @@ describe('publishing with workspaces', () => {
 describe('the workspace tools', () => {
   it('lists Inbox first with descriptions and counts', async () => {
     await makeWorkspace('Research', 'Papers');
-    await call('publish_artifact', { content: '# Hi', format: 'markdown', workspace: 'Research' });
+    await call('publish_artifact', { ...TEST_DESCRIBED, content: '# Hi', format: 'markdown', workspace: 'Research' });
     const result = await call('list_workspaces', {});
     const inboxAt = result.text.indexOf('Inbox');
     const researchAt = result.text.indexOf('Research');

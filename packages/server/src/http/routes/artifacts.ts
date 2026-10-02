@@ -45,6 +45,8 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
       type: requireString(body, 'type'),
       content: requireString(body, 'content'),
       title: optionalString(body, 'title'),
+      description: requireString(body, 'description'),
+      summary: requireString(body, 'summary'),
     });
     if (target) workspaces.place(ownerId, created.id, target.id);
     return c.json(withUrl(created, config.baseUrl), 201);
@@ -132,6 +134,8 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
       content: requireString(body, 'content'),
       type: optionalString(body, 'type'),
       title: optionalString(body, 'title'),
+      description: optionalString(body, 'description'),
+      summary: optionalString(body, 'summary'),
       baseVersion: requireInteger(body, 'baseVersion'),
     });
 
@@ -145,6 +149,27 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
     }
 
     return c.json(withUrl(updated, config.baseUrl));
+  });
+
+  /**
+   * Retitle an artifact, or rewrite its description or summary, without touching
+   * its content. No version is written and no baseVersion is needed: the content
+   * is what versions protect, and none of it changes here.
+   *
+   * Not counted against publishing. Tidying a whole library is dozens of these
+   * in a row, and none of them publishes anything.
+   */
+  app.patch('/api/artifacts/:id', requireUser, async (c) => {
+    const artifact = artifacts.get(c.req.param('id'));
+    requireAccess(currentUser(c), sharing.accessFactsFor(artifact), 'manage');
+
+    const body = await readJsonObject(c.req.raw, bodyCap);
+    const described = artifacts.describe(artifact.id, {
+      title: optionalString(body, 'title'),
+      description: optionalString(body, 'description'),
+      summary: optionalString(body, 'summary'),
+    });
+    return c.json(withUrl(described, config.baseUrl));
   });
 
   /**
