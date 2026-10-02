@@ -451,3 +451,31 @@ describe('documents published before descriptions were required', () => {
     expect(await listed(doc.id)).toMatchObject({ description: 'An old note.', summaryVersion: 2 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Somebody else's listing
+// ---------------------------------------------------------------------------
+
+describe('what a reader sees about a document shared with them', () => {
+  it('lists its description and summary alongside the title', async () => {
+    const reader = await signIn(server, 'reader@example.com');
+    const doc = await owner.publish({ type: 'markdown', content: '# Plan', description: 'The plan.', summary: 'Do it.' });
+    await owner.as(`/api/artifacts/${doc.id}/sharing/people`, jsonBody({ email: reader.email }));
+
+    const shared = (await (await reader.as('/api/shared-with-me')).json()) as { artifacts: Listed[] };
+    expect(shared.artifacts.find((artifact) => artifact.id === doc.id)).toMatchObject({
+      description: 'The plan.',
+      summary: 'Do it.',
+      summaryVersion: 1,
+    });
+  });
+
+  it('never carries the content, which the listing has no business sending', async () => {
+    const reader = await signIn(server, 'reader@example.com');
+    const doc = await owner.publish({ type: 'markdown', content: '# Secret body' });
+    await owner.as(`/api/artifacts/${doc.id}/sharing/people`, jsonBody({ email: reader.email }));
+
+    const shared = (await (await reader.as('/api/shared-with-me')).json()) as { artifacts: Record<string, unknown>[] };
+    expect(shared.artifacts[0]).not.toHaveProperty('content');
+  });
+});

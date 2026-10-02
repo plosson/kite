@@ -7,13 +7,14 @@
  */
 
 import type { Hono } from 'hono';
-import { INBOX_ID } from '@open-artifact/shared';
+import { INBOX_ID, TIMELINE_DEFAULT_LIMIT, TIMELINE_MAX_LIMIT } from '@open-artifact/shared';
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
 import { readJsonObject, jsonBodyCap } from '../body.js';
 import { requireAccess, canAccess } from '../../artifacts/access.js';
 import type { ArtifactDetail, ArtifactSummary } from '../../artifacts/service.js';
+import { visibleArtifactIds } from '../../workspaces/visible.js';
 
 export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): void {
   const { artifacts, sharing, workspaces, config, rateLimiter } = context;
@@ -124,6 +125,18 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
     });
   });
 
+  /**
+   * When everything in this person's sidebar was published and edited, newest
+   * first. The same documents the two listings show, by the same rule, so the
+   * timeline never mentions one the list would not: nothing unshared, nothing
+   * expired, nothing deleted.
+   */
+  app.get('/api/timeline', requireUser, (c) => {
+    const user = currentUser(c);
+    const limit = timelineLimit(c.req.query('limit'));
+    return c.json({ events: artifacts.timelineOf(visibleArtifactIds(artifacts, sharing, user), limit) });
+  });
+
   /** Replace an artifact's content. The URL stays the same. */
   app.put('/api/artifacts/:id', requireUser, publishLimit, async (c) => {
     const artifact = artifacts.get(c.req.param('id'));
@@ -218,6 +231,15 @@ function withUrl<T extends ArtifactSummary | ArtifactDetail>(
   baseUrl: string,
 ): T & { url: string } {
   return { ...artifact, url: `${baseUrl}/a/${artifact.slug}` };
+}
+
+/** The default when left out; refused when it is not a whole number from 1 up; capped at the most. */
+function timelineLimit(raw: string | undefined): number {
+  if (raw === undefined) return TIMELINE_DEFAULT_LIMIT;
+  if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+    throw new ApiError('validation_failed', 'limit must be a whole number from 1 up.');
+  }
+  return Math.min(Number(raw), TIMELINE_MAX_LIMIT);
 }
 
 function requireString(body: Record<string, unknown>, field: string): string {

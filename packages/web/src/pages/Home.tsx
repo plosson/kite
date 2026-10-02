@@ -12,6 +12,31 @@ import { useAccount } from '../App.jsx';
 import { Badge, EmptyState, RelativeTime } from '../components/primitives.js';
 import { SetupGuide } from '../components/SetupGuide.js';
 import { INBOX_ID, groupByWorkspace } from '../workspaces.js';
+import { Timeline } from '../components/Timeline.js';
+import { useState } from 'react';
+
+type View = 'list' | 'timeline';
+const VIEW_PREFERENCE = 'kite.home.view';
+
+/** List or timeline, remembered in this browser. Private browsing forgets it, which is fine. */
+function useView(): [View, (view: View) => void] {
+  const [view, setView] = useState<View>(() => {
+    try {
+      return localStorage.getItem(VIEW_PREFERENCE) === 'timeline' ? 'timeline' : 'list';
+    } catch {
+      return 'list';
+    }
+  });
+  function choose(next: View) {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_PREFERENCE, next);
+    } catch {
+      // Not remembering is a small loss.
+    }
+  }
+  return [view, choose];
+}
 
 export function Home({
   mine,
@@ -31,10 +56,31 @@ export function Home({
   const { user } = useAccount();
   const notConnected = user.connectedApps.length === 0;
   const groups = groupByWorkspace(workspaces, mine, shared);
+  const [view, setView] = useView();
+  const descriptions = new Map([...mine, ...shared].map((artifact) => [artifact.id, artifact.description]));
 
   return (
     <div className="mx-auto w-full max-w-[760px] px-6 py-9 max-md:px-4 max-md:py-6">
-      <h1 className="text-[17px]">Artifacts</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-[17px]">Artifacts</h1>
+        <div role="group" aria-label="View" className="flex rounded-[--radius] border border-line p-0.5">
+          {(['list', 'timeline'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={view === option}
+              onClick={() => setView(option)}
+              className={`rounded-[--radius-sm] px-2.5 py-1 text-[12px] capitalize transition-colors ${
+                view === option ? 'bg-sunken text-ink' : 'text-ink-3 hover:text-ink'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'timeline' && <Timeline descriptions={descriptions} />}
 
       {failed && (
         <div className="mt-4">
@@ -48,7 +94,7 @@ export function Home({
         </div>
       )}
 
-      {groups.map(({ workspace, artifacts }) => (
+      {view === 'list' && groups.map(({ workspace, artifacts }) => (
         <Group key={workspace.id} title={workspace.name}>
           {workspace.id === INBOX_ID && loading && mine.length === 0 && <LoadingRows />}
           {/* Somebody who has not connected an assistant gets the setup guide in
@@ -77,6 +123,7 @@ export function Home({
               key={artifact.id}
               slug={artifact.slug}
               title={artifact.title}
+              description={artifact.description}
               type={artifact.type}
               updatedAt={artifact.updatedAt}
               byline={artifact.ownerId === user.id ? undefined : (artifact.ownerName ?? artifact.ownerEmail ?? undefined)}
@@ -104,6 +151,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 function Row({
   slug,
   title,
+  description,
   type,
   updatedAt,
   byline,
@@ -112,6 +160,8 @@ function Row({
 }: {
   slug: string;
   title: string;
+  /** One line from its publisher, shown under the title. Null on older documents. */
+  description: string | null;
   type: 'markdown' | 'html';
   updatedAt: string;
   byline?: string;
@@ -140,6 +190,11 @@ function Row({
           <span className="block truncate text-[13px] font-medium text-ink group-hover:text-accent">
             {title}
           </span>
+          {description && (
+            <span className="block truncate text-[12px] text-ink-3" title={description}>
+              {description}
+            </span>
+          )}
           {byline && <span className="block truncate text-[11.5px] text-ink-3">{byline}</span>}
         </span>
 

@@ -331,6 +331,13 @@ export const API_OPERATIONS: Record<string, Operation> = {
     auth: 'required',
     responses: { '200': 'Your artifacts, newest change first', '401': 'Not signed in' },
   },
+  'GET /api/timeline': {
+    summary: 'When your documents were published and edited',
+    description:
+      'Newest first, across everything you own and everything shared with you that has not expired. Each event names the document, whether it was published or edited, and the version it made. Changing only a title, description or summary writes no version and is not an event. Optional `limit`: 500 by default, at most 2000.',
+    auth: 'required',
+    responses: { '200': 'The events', '400': 'limit is not a whole number from 1 up', '401': 'Not signed in' },
+  },
   'GET /api/artifacts/:id': {
     summary: 'Read one artifact, with its content',
     auth: 'optional',

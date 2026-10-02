@@ -12,8 +12,8 @@
  *    a realistic accident, and silently keeping only the last one loses work.
  */
 
-import { eq, and, desc } from 'drizzle-orm';
-import type { ArtifactType } from '@open-artifact/shared';
+import { eq, and, desc, inArray } from 'drizzle-orm';
+import type { ArtifactType, TimelineEvent } from '@open-artifact/shared';
 import {
   isArtifactType,
   ARTIFACT_DESCRIPTION_MAX_LENGTH,
@@ -333,6 +333,40 @@ export class ArtifactService {
       .orderBy(desc(artifacts.updatedAt))
       .all()
       .map(toSummary);
+  }
+
+  /**
+   * Every version of these artifacts, newest first, as timeline events. Only the
+   * columns a timeline shows: never content, which for a few hundred versions
+   * would be megabytes nobody asked for. Which ids a person may see is the
+   * caller's to decide.
+   */
+  timelineOf(ids: Set<string>, limit: number): TimelineEvent[] {
+    if (ids.size === 0) return [];
+    return this.db
+      .select({
+        artifactId: artifactVersions.artifactId,
+        version: artifactVersions.version,
+        at: artifactVersions.createdAt,
+        slug: artifacts.slug,
+        title: artifacts.title,
+        type: artifacts.type,
+      })
+      .from(artifactVersions)
+      .innerJoin(artifacts, eq(artifacts.id, artifactVersions.artifactId))
+      .where(inArray(artifactVersions.artifactId, [...ids]))
+      .orderBy(desc(artifactVersions.createdAt), desc(artifactVersions.version))
+      .limit(limit)
+      .all()
+      .map((row) => ({
+        artifactId: row.artifactId,
+        slug: row.slug,
+        title: row.title,
+        type: row.type as ArtifactType,
+        kind: row.version === 1 ? 'published' : 'edited',
+        version: row.version,
+        at: row.at,
+      }));
   }
 
   /** Everything one MCP connection published, newest change first. */

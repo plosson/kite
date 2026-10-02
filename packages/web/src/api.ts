@@ -22,7 +22,10 @@ import type {
   MintedMcpToken,
   WorkspaceSummary,
   ListWorkspacesResponse,
+  TimelineResponse,
 } from '@open-artifact/shared';
+
+export type { TimelineEvent } from '@open-artifact/shared';
 
 export type {
   CommentThread,
@@ -244,6 +247,8 @@ export const endpoints = {
   // --- Artifacts ---
   myArtifacts: () => api<{ artifacts: ArtifactSummary[] }>('/api/artifacts'),
   sharedWithMe: () => api<{ artifacts: SharedArtifact[] }>('/api/shared-with-me'),
+  /** When everything in the sidebar was published and edited, newest first. */
+  timeline: () => api<TimelineResponse>('/api/timeline'),
 
   /** The viewer has a slug from the URL, not an id. */
   artifactBySlug: (slug: string) =>
