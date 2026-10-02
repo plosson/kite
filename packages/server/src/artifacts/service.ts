@@ -14,7 +14,12 @@
 
 import { eq, and, desc } from 'drizzle-orm';
 import type { ArtifactType } from '@open-artifact/shared';
-import { isArtifactType } from '@open-artifact/shared';
+import {
+  isArtifactType,
+  ARTIFACT_DESCRIPTION_MAX_LENGTH,
+  ARTIFACT_SUMMARY_MAX_LENGTH,
+  ARTIFACT_SUMMARY_MAX_LINES,
+} from '@open-artifact/shared';
 import type { Db } from '../db/index.js';
 import { artifacts, artifactVersions, artifactStars, type ArtifactRow } from '../db/schema.js';
 import { newId, newSlug } from '../ids.js';
@@ -28,6 +33,10 @@ export interface CreateArtifactInput {
   content: string;
   /** Optional. When given it is kept as-is and never re-derived on later updates. */
   title?: string | undefined;
+  /** Required: one line on what the document is. */
+  description: string;
+  /** Required: up to ten lines on what it says. */
+  summary: string;
   /**
    * The MCP connection that published this, stamped so the connection can later
    * find and edit its own work. Null, or left out, for the CLI and the web.
@@ -39,8 +48,23 @@ export interface UpdateArtifactInput {
   content: string;
   type?: string | undefined;
   title?: string | undefined;
+  /** Left out, the current one is kept. */
+  description?: string | undefined;
+  /** Left out, the current one is kept and falls one more version behind. */
+  summary?: string | undefined;
   /** The version the caller last saw. Anything else means someone got there first. */
   baseVersion: number;
+}
+
+/**
+ * What can change about a document without changing the document. None of it
+ * makes a version, because none of it is content: retitling a library should not
+ * read as fifty edits to fifty documents.
+ */
+export interface DescribeArtifactInput {
+  title?: string | undefined;
+  description?: string | undefined;
+  summary?: string | undefined;
 }
 
 export interface ArtifactSummary {
@@ -53,6 +77,10 @@ export interface ArtifactSummary {
   expiresAt: string | null;
   type: ArtifactType;
   title: string;
+  description: string | null;
+  summary: string | null;
+  /** The version the summary was written against. Null when there is none. */
+  summaryVersion: number | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -132,6 +160,8 @@ export class ArtifactService {
     const type = this.requireType(input.type);
     const content = this.requireContent(input.content);
     const explicitTitle = normaliseGivenTitle(input.title);
+    const description = requireDescription(input.description);
+    const summary = requireSummary(input.summary);
     this.requireRoom(input.ownerId, Buffer.byteLength(content, 'utf8'));
 
     const timestamp = nowIso();
@@ -143,6 +173,9 @@ export class ArtifactService {
       type,
       title: explicitTitle ?? deriveTitle(type, content),
       titleIsExplicit: explicitTitle === null ? 0 : 1,
+      description,
+      summary,
+      summaryVersion: 1,
       content,
       currentVersion: 1,
       isPublic: 0,
@@ -176,6 +209,9 @@ export class ArtifactService {
     const type = input.type === undefined ? existing.type : this.requireType(input.type);
     const content = this.requireContent(input.content);
     const explicitTitle = normaliseGivenTitle(input.title);
+    const description =
+      input.description === undefined ? undefined : requireDescription(input.description);
+    const summary = input.summary === undefined ? undefined : requireSummary(input.summary);
 
     if (!Number.isInteger(input.baseVersion)) {
       throw new ApiError(
@@ -209,6 +245,10 @@ export class ArtifactService {
           content,
           title,
           titleIsExplicit: titleIsExplicit ? 1 : 0,
+          // Left out means unchanged. A summary left out stays pinned to the
+          // version it was written against, which is how drift shows.
+          ...(description === undefined ? {} : { description }),
+          ...(summary === undefined ? {} : { summary, summaryVersion: version }),
           currentVersion: version,
           updatedAt: timestamp,
         })
@@ -229,6 +269,41 @@ export class ArtifactService {
         })
         .run();
     });
+
+    return this.get(id);
+  }
+
+  /**
+   * Change what is said about a document without touching the document.
+   *
+   * No version is written and updatedAt stays put: the content did not change,
+   * so the list a person sorts by recent change should not reshuffle because
+   * somebody tidied the titles. A summary written here is written against the
+   * current version, so it catches up.
+   */
+  describe(id: string, input: DescribeArtifactInput): ArtifactDetail {
+    const existing = this.requireRow(id);
+    const title = normaliseGivenTitle(input.title);
+    const description =
+      input.description === undefined ? undefined : requireDescription(input.description);
+    const summary = input.summary === undefined ? undefined : requireSummary(input.summary);
+
+    if (title === null && description === undefined && summary === undefined) {
+      throw new ApiError(
+        'validation_failed',
+        'Send at least one of title, description or summary.',
+      );
+    }
+
+    this.db
+      .update(artifacts)
+      .set({
+        ...(title === null ? {} : { title, titleIsExplicit: 1 }),
+        ...(description === undefined ? {} : { description }),
+        ...(summary === undefined ? {} : { summary, summaryVersion: existing.currentVersion }),
+      })
+      .where(eq(artifacts.id, id))
+      .run();
 
     return this.get(id);
   }
@@ -406,6 +481,65 @@ function normaliseGivenTitle(title: string | undefined): string | null {
   return trimmed.slice(0, 200);
 }
 
+/**
+ * One line, refused rather than cut when it is too long, so whoever wrote it
+ * writes a shorter one instead of publishing half a sentence.
+ */
+function requireDescription(description: unknown): string {
+  if (typeof description !== 'string') {
+    throw new ApiError(
+      'validation_failed',
+      'description is required: one line saying what the document is and what it is for.',
+    );
+  }
+  const trimmed = description.trim();
+  if (trimmed.length === 0) {
+    throw new ApiError('validation_failed', 'description cannot be blank.');
+  }
+  if (/[\r\n]/.test(trimmed)) {
+    throw new ApiError('validation_failed', 'description must be a single line.');
+  }
+  const normalised = trimmed.replace(/\s+/g, ' ');
+  if (normalised.length > ARTIFACT_DESCRIPTION_MAX_LENGTH) {
+    throw new ApiError(
+      'validation_failed',
+      `description is ${normalised.length} characters. Keep it to ${ARTIFACT_DESCRIPTION_MAX_LENGTH}.`,
+      { length: normalised.length, maxLength: ARTIFACT_DESCRIPTION_MAX_LENGTH },
+    );
+  }
+  return normalised;
+}
+
+/** Up to ten lines. Refused rather than cut, for the same reason. */
+function requireSummary(summary: unknown): string {
+  if (typeof summary !== 'string') {
+    throw new ApiError(
+      'validation_failed',
+      `summary is required: at most ${ARTIFACT_SUMMARY_MAX_LINES} lines on what the document says.`,
+    );
+  }
+  const trimmed = summary.replace(/\r\n?/g, '\n').trim();
+  if (trimmed.length === 0) {
+    throw new ApiError('validation_failed', 'summary cannot be blank.');
+  }
+  const lines = trimmed.split('\n').length;
+  if (lines > ARTIFACT_SUMMARY_MAX_LINES) {
+    throw new ApiError(
+      'validation_failed',
+      `summary is ${lines} lines. Keep it to ${ARTIFACT_SUMMARY_MAX_LINES}.`,
+      { lines, maxLines: ARTIFACT_SUMMARY_MAX_LINES },
+    );
+  }
+  if (trimmed.length > ARTIFACT_SUMMARY_MAX_LENGTH) {
+    throw new ApiError(
+      'validation_failed',
+      `summary is ${trimmed.length} characters. Keep it to ${ARTIFACT_SUMMARY_MAX_LENGTH}.`,
+      { length: trimmed.length, maxLength: ARTIFACT_SUMMARY_MAX_LENGTH },
+    );
+  }
+  return trimmed;
+}
+
 function toSummary(row: ArtifactRow): ArtifactSummary {
   return {
     id: row.id,
@@ -415,6 +549,9 @@ function toSummary(row: ArtifactRow): ArtifactSummary {
     expiresAt: row.expiresAt,
     type: row.type as ArtifactType,
     title: row.title,
+    description: row.description,
+    summary: row.summary,
+    summaryVersion: row.summaryVersion,
     version: row.currentVersion,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

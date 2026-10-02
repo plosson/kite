@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { createTestServer, signIn, jsonBody, type TestServer } from './helpers/server.js';
+import { TEST_DESCRIBED, createTestServer, signIn, jsonBody, type TestServer } from './helpers/server.js';
 
 /**
  * Limits and caps.
@@ -28,11 +28,11 @@ describe('an agent stuck in a loop', () => {
     const agent = await signIn(server, 'agent@example.com');
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await agent.as('/api/artifacts', jsonBody({ type: 'markdown', content: `# ${attempt}` }));
+      const response = await agent.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: `# ${attempt}` }));
       expect(response.status).toBe(201);
     }
 
-    const stopped = await agent.as('/api/artifacts', jsonBody({ type: 'markdown', content: '# Again' }));
+    const stopped = await agent.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Again' }));
     expect(stopped.status).toBe(429);
 
     const body = (await stopped.json()) as { error: { code: string; details: Record<string, number> } };
@@ -48,10 +48,10 @@ describe('an agent stuck in a loop', () => {
     const quiet = await signIn(server, 'quiet@example.com');
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      await noisy.as('/api/artifacts', jsonBody({ type: 'markdown', content: `# ${attempt}` }));
+      await noisy.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: `# ${attempt}` }));
     }
 
-    const response = await quiet.as('/api/artifacts', jsonBody({ type: 'markdown', content: '# Mine' }));
+    const response = await quiet.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Mine' }));
     expect(response.status).toBe(201);
   });
 
@@ -85,7 +85,7 @@ describe('how much one person may keep', () => {
     await person.publish({ type: 'markdown', content: '# One' });
     await person.publish({ type: 'markdown', content: '# Two' });
 
-    const response = await person.as('/api/artifacts', jsonBody({ type: 'markdown', content: '# Three' }));
+    const response = await person.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Three' }));
     expect(response.status).toBe(400);
     expect(await messageOf(response)).toContain('Delete something first');
   });
@@ -98,7 +98,7 @@ describe('how much one person may keep', () => {
 
     const response = await person.as(
       '/api/artifacts',
-      jsonBody({ type: 'markdown', content: 'y'.repeat(1000) }),
+      jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: 'y'.repeat(1000) }),
     );
     expect(response.status).toBe(400);
     expect(await messageOf(response)).toContain('2.0 KB');
@@ -110,13 +110,13 @@ describe('how much one person may keep', () => {
 
     const first = await person.publish({ type: 'markdown', content: '# One' });
     expect(
-      (await person.as('/api/artifacts', jsonBody({ type: 'markdown', content: '# Two' }))).status,
+      (await person.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Two' }))).status,
     ).toBe(400);
 
     await person.as(`/api/artifacts/${first.id}?confirm=true`, { method: 'DELETE' });
 
     expect(
-      (await person.as('/api/artifacts', jsonBody({ type: 'markdown', content: '# Two' }))).status,
+      (await person.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Two' }))).status,
     ).toBe(201);
   });
 
@@ -138,7 +138,7 @@ describe('how much one person may keep', () => {
     // Three versions of 1500 bytes each, but only 1500 counted.
     const response = await person.as(
       '/api/artifacts',
-      jsonBody({ type: 'markdown', content: 'z'.repeat(1500) }),
+      jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: 'z'.repeat(1500) }),
     );
     expect(response.status).toBe(201);
   });
@@ -254,7 +254,7 @@ describe('a body far larger than anything we accept', () => {
 
     const response = await person.as(
       '/api/artifacts',
-      jsonBody({ type: 'markdown', content: 'x'.repeat(2 * 1024 * 1024) }),
+      jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: 'x'.repeat(2 * 1024 * 1024) }),
     );
 
     expect(response.status).toBe(413);
@@ -266,7 +266,7 @@ describe('a body far larger than anything we accept', () => {
 
     const response = await person.as(
       '/api/artifacts',
-      jsonBody({ type: 'markdown', content: '# Small enough' }),
+      jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Small enough' }),
     );
 
     expect(response.status).toBe(201);
@@ -283,8 +283,8 @@ describe('one instance never limits another', () => {
     const onFirst = await signIn(first, 'person@example.com');
     const onSecond = await signIn(second, 'person@example.com');
 
-    expect((await onFirst.as('/api/artifacts', jsonBody({ type: 'markdown', content: '# A' }))).status).toBe(201);
-    expect((await onSecond.as('/api/artifacts', jsonBody({ type: 'markdown', content: '# B' }))).status).toBe(201);
+    expect((await onFirst.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# A' }))).status).toBe(201);
+    expect((await onSecond.as('/api/artifacts', jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# B' }))).status).toBe(201);
   });
 });
 

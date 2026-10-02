@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
+import { TEST_DESCRIBED,
   createTestServer,
   signIn,
   jsonBody,
@@ -59,7 +59,7 @@ async function tool(name: string, args: Record<string, unknown>): Promise<string
 describe('a person marks what is wrong and the agent fixes it', () => {
   it('walks the whole way round', async () => {
     // 1. The agent publishes, with an id on the block it expects to be discussed.
-    const published = await tool('publish_artifact', {
+    const published = await tool('publish_artifact', { ...TEST_DESCRIBED,
       content: PAGE,
       format: 'html',
       title: 'Plans',
@@ -126,7 +126,7 @@ describe('a person marks what is wrong and the agent fixes it', () => {
   });
 
   it('lets the agent ask only for what happened since it last looked', async () => {
-    const published = await tool('publish_artifact', { content: PAGE, format: 'html' });
+    const published = await tool('publish_artifact', { ...TEST_DESCRIBED, content: PAGE, format: 'html' });
     const artifactId = /artifact_id: (\S+)/.exec(published)?.[1] ?? '';
     await tool('share_artifact', { artifact_id: artifactId, email: 'reader@example.com' });
 
@@ -155,7 +155,7 @@ describe('a person marks what is wrong and the agent fixes it', () => {
 
 describe('the people around the loop are told what happened', () => {
   it('notifies the owner of a comment on an element of their page', async () => {
-    const published = await tool('publish_artifact', { content: PAGE, format: 'html' });
+    const published = await tool('publish_artifact', { ...TEST_DESCRIBED, content: PAGE, format: 'html' });
     const artifactId = /artifact_id: (\S+)/.exec(published)?.[1] ?? '';
     await tool('share_artifact', { artifact_id: artifactId, email: 'reader@example.com' });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { eq } from 'drizzle-orm';
-import {
+import { TEST_DESCRIBED,
   createTestServer,
   signIn,
   type TestServer,
@@ -389,7 +389,7 @@ describe('the full walk a browser connector makes', () => {
       method: 'tools/call',
       params: {
         name: 'publish_artifact',
-        arguments: { content: '# From a browser\n\nNo terminal here.', format: 'markdown' },
+        arguments: { ...TEST_DESCRIBED, content: '# From a browser\n\nNo terminal here.', format: 'markdown' },
       },
     });
     expect(publish.status).toBe(200);
@@ -412,7 +412,7 @@ describe('the full walk a browser connector makes', () => {
       method: 'tools/call',
       params: {
         name: 'publish_artifact',
-        arguments: { content: '# A second page', format: 'markdown' },
+        arguments: { ...TEST_DESCRIBED, content: '# A second page', format: 'markdown' },
       },
     });
     const secondBody = (await second.json()) as { result: { isError?: boolean } };

@@ -300,6 +300,24 @@ export const artifacts = sqliteTable(
      * silently overwrite a title someone chose on purpose.
      */
     titleIsExplicit: integer('title_is_explicit').notNull().default(0),
+    /**
+     * One line saying what the document is, written by whoever published it.
+     * Null only on documents published before publishers had to write one.
+     */
+    description: text('description'),
+    /**
+     * Up to ten lines on what the document says, written by whoever published
+     * it, so a whole library can be read and sorted without opening each one.
+     * Null only on documents published before publishers had to write one.
+     */
+    summary: text('summary'),
+    /**
+     * The version the summary was last written against. Content can change
+     * without the summary following — an edit in the browser has nobody to
+     * rewrite it — so the gap between this and currentVersion says how far the
+     * summary may have drifted. Null when there is no summary.
+     */
+    summaryVersion: integer('summary_version'),
     content: text('content').notNull(),
     /** Matches the highest version number in artifact_versions. Used for conflict detection. */
     currentVersion: integer('current_version').notNull().default(1),

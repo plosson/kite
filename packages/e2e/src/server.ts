@@ -162,7 +162,12 @@ export async function startServer(): Promise<RunningServer> {
       const response = await as('/api/artifacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        // A publisher has to say what the document is; these tests are not about that.
+        body: JSON.stringify({
+          description: 'A document published by a test.',
+          summary: 'It exists so the test has something to act on.',
+          ...body,
+        }),
       });
       if (!response.ok) throw new Error(`publish failed: ${await response.text()}`);
       return (await response.json()) as PublishedArtifact;

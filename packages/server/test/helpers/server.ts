@@ -128,8 +128,16 @@ export interface SignedInUser {
     type: string;
     content: string;
     title?: string;
+    /** Filled in when left out: most tests are not about what a publisher writes. */
+    description?: string;
+    summary?: string;
   }) => Promise<PublishedArtifact>;
 }
+
+/** What a test publishes as description and summary when it does not care. */
+export const TEST_DESCRIPTION = 'A document published by a test.';
+export const TEST_SUMMARY = 'It exists so the test has something to act on.';
+export const TEST_DESCRIBED = { description: TEST_DESCRIPTION, summary: TEST_SUMMARY };
 
 /**
  * Goes through the real sign-in flow: ask for a code, read it out of the email,
@@ -165,7 +173,7 @@ export async function signIn(server: TestServer, email: string): Promise<SignedI
       const response = await as('/api/artifacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ description: TEST_DESCRIPTION, summary: TEST_SUMMARY, ...body }),
       });
       if (response.status !== 201) {
         throw new Error(`publish failed: ${response.status} ${await response.text()}`);

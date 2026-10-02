@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
+import { TEST_DESCRIBED,
   createTestServer,
   jsonBody,
   signIn,
@@ -63,7 +63,7 @@ const DOCUMENT = [
 
 /** Publishes over MCP and shares it with the reader, who can then comment. */
 async function publishAndShare(content = DOCUMENT): Promise<string> {
-  const published = await call('publish_artifact', { content, format: 'markdown', title: 'Plans' });
+  const published = await call('publish_artifact', { ...TEST_DESCRIBED, content, format: 'markdown', title: 'Plans' });
   const artifactId = /artifact_id: (\S+)/.exec(published.text)?.[1];
   if (!artifactId) throw new Error(`no artifact id: ${published.text}`);
   await call('share_artifact', { artifact_id: artifactId, email: 'reader@example.com' });
@@ -202,7 +202,7 @@ const PAGE = [
 ].join('\n');
 
 async function publishPage(content = PAGE): Promise<string> {
-  const published = await call('publish_artifact', { content, format: 'html', title: 'Plans' });
+  const published = await call('publish_artifact', { ...TEST_DESCRIBED, content, format: 'html', title: 'Plans' });
   const artifactId = /artifact_id: (\S+)/.exec(published.text)?.[1];
   if (!artifactId) throw new Error(`no artifact id: ${published.text}`);
   await call('share_artifact', { artifact_id: artifactId, email: 'reader@example.com' });

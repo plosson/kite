@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestServer, signIn, jsonBody, type TestServer, type SignedInUser } from './helpers/server.js';
+import { TEST_DESCRIBED, createTestServer, signIn, jsonBody, type TestServer, type SignedInUser } from './helpers/server.js';
 
 /**
  * Workspaces over HTTP: a person's private sorting of what they can see.
@@ -173,7 +173,7 @@ describe('publishing into a workspace', () => {
     const research = await createWorkspace(owner, 'Research');
     const response = await owner.as(
       '/api/artifacts',
-      jsonBody({ type: 'markdown', content: '# Paper', workspaceId: research.id }),
+      jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Paper', workspaceId: research.id }),
     );
     expect(response.status).toBe(201);
     const kite = (await response.json()) as { id: string };
@@ -185,7 +185,7 @@ describe('publishing into a workspace', () => {
     for (const workspaceId of ['ws_doesnotexist', theirs.id]) {
       const response = await owner.as(
         '/api/artifacts',
-        jsonBody({ type: 'markdown', content: '# Nope', workspaceId }),
+        jsonBody({ ...TEST_DESCRIBED, type: 'markdown', content: '# Nope', workspaceId }),
       );
       expect(response.status, workspaceId).toBe(404);
     }
