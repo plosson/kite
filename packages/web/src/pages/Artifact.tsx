@@ -52,6 +52,7 @@ import {
   type BridgeSelection,
 } from '../components/frame-bridge.js';
 import { NotFound } from './NotFound.js';
+import { SidebarButton } from '../components/Sidebar.js';
 import { describeRemaining } from '@open-artifact/shared';
 import type { CommentThread } from '@open-artifact/shared';
 
@@ -97,23 +98,18 @@ export function Artifact({ slug }: { slug: string }) {
 
   return (
     <div className="flex h-dvh flex-col">
-      <Bar artifact={artifact} byline={isOwner ? 'You' : ownerOf(artifact)}>
+      <Bar artifact={artifact} byline={isOwner ? 'You' : ownerOf(artifact)} leading={<SidebarButton />}>
         {/* A reader has the sidebar collapsed and the footer a scroll away, so
             the one obvious way to their own setup sits here in the bar. */}
         {invitePublish && <PublishPill />}
 
         <BarStar id={artifact.id} />
 
-        <Button
-          size="sm"
-          tone={commentsCollapsed ? 'ghost' : 'default'}
-          onClick={toggleComments}
-        >
-          Comments
-          {conversation.openCount > 0 && (
-            <span className="ml-0.5 tabular-nums text-ink-3">{conversation.openCount}</span>
-          )}
-        </Button>
+        <CommentsButton
+          collapsed={commentsCollapsed}
+          openCount={conversation.openCount}
+          onToggle={toggleComments}
+        />
 
         {isOwner && artifact.type === 'markdown' && (
           <>
@@ -262,19 +258,16 @@ export function PublicArtifact({
         {/* A reader with no account has no sidebar, so this bar is the only
             place they can be given the choice. Somebody who came to read a long
             document at night should not have to sign up to turn the lights
-            down. Signed-in people set it once in their account menu instead. */}
-        <ThemeControl className="mr-0.5" />
+            down. Signed-in people set it once in their account menu instead.
+            A phone has no room for it beside the title, and follows the
+            system's own setting, which is where a phone owner sets this. */}
+        <ThemeControl className="mr-0.5 max-md:hidden" />
 
-        <Button
-          size="sm"
-          tone={commentsCollapsed ? 'ghost' : 'default'}
-          onClick={toggleComments}
-        >
-          Comments
-          {conversation.openCount > 0 && (
-            <span className="ml-0.5 tabular-nums text-ink-3">{conversation.openCount}</span>
-          )}
-        </Button>
+        <CommentsButton
+          collapsed={commentsCollapsed}
+          openCount={conversation.openCount}
+          onToggle={toggleComments}
+        />
         <Button size="sm" onClick={onSignIn}>
           Sign in
         </Button>
@@ -323,20 +316,24 @@ function Bar({
   artifact,
   byline,
   brand = false,
+  leading,
   children,
 }: {
   artifact: SharedArtifact;
   byline: string | null;
   /** Show the Kite wordmark on the left, for readers with no sidebar. */
   brand?: boolean;
+  /** Drawn first, before the title: the way into the sidebar on a phone. */
+  leading?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   return (
-    <header className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-4">
+    <header className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-4 max-md:gap-1.5 max-md:px-2">
+      {leading}
       {brand && (
         <Link
           to="/"
-          className="shrink-0 text-[12.5px] font-semibold text-ink-2 transition-colors hover:text-ink"
+          className="shrink-0 text-[12.5px] font-semibold text-ink-2 transition-colors hover:text-ink max-md:pl-1"
         >
           Kite
         </Link>
@@ -344,7 +341,13 @@ function Bar({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {brand && <span className="shrink-0 text-ink-3" aria-hidden="true">/</span>}
         <h1 className="truncate text-[13px] font-semibold text-ink">{artifact.title}</h1>
-        {artifact.isPublic === 1 && <Badge tone="accent">Public</Badge>}
+        {/* Not on a phone, where the title needs the room more. The owner sees
+            it in the share dialog; anybody else has the caution bar below. */}
+        {artifact.isPublic === 1 && (
+          <span className="max-md:hidden">
+            <Badge tone="accent">Public</Badge>
+          </span>
+        )}
         <ExpiringSoon expiresAt={artifact.expiresAt} />
       </div>
 
@@ -353,8 +356,33 @@ function Bar({
         <RelativeTime iso={artifact.updatedAt} prefix="updated" />
       </p>
 
-      {children && <div className="flex shrink-0 items-center gap-1.5">{children}</div>}
+      {children && <div className="flex shrink-0 items-center gap-1.5 max-md:gap-1">{children}</div>}
     </header>
+  );
+}
+
+/**
+ * Opens and folds the comments panel. On a phone the word gives way to the
+ * glyph, because the bar has no room for it beside the title; the word stays
+ * for screen readers.
+ */
+function CommentsButton({
+  collapsed,
+  openCount,
+  onToggle,
+}: {
+  collapsed: boolean;
+  openCount: number;
+  onToggle: () => void;
+}) {
+  return (
+    <Button size="sm" tone={collapsed ? 'ghost' : 'default'} onClick={onToggle}>
+      <span className="md:hidden">
+        <CommentGlyph />
+      </span>
+      <span className="max-md:sr-only">Comments</span>
+      {openCount > 0 && <span className="ml-0.5 tabular-nums text-ink-3">{openCount}</span>}
+    </Button>
   );
 }
 
@@ -1056,6 +1084,45 @@ function RenderedMarkdown({
     setSelected(article.current ? readSelection(article.current) : null);
   }, [commentingAllowed]);
 
+  /** Set while the composer is open, so a selection lost to its box does not close it. */
+  const composing = useRef(false);
+
+  /*
+   * Selecting on a touch screen.
+   *
+   * A long press and its drag handles never send the mouseup the desk relies
+   * on, so a phone would never be offered the Comment button. There the
+   * selection itself is watched instead, and acted on once the handles have
+   * been still for a moment rather than on every step of the drag.
+   *
+   * Pressing Comment hands focus to the composer and the selection goes with
+   * it; that loss must not close the composer it just opened.
+   */
+  useEffect(() => {
+    if (!commentingAllowed || !window.matchMedia('(pointer: coarse)').matches) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onSelectionChange = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const passage = article.current ? readSelection(article.current) : null;
+        if (passage === null && composing.current) return;
+        setSelected(passage);
+      }, 300);
+    };
+
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('selectionchange', onSelectionChange);
+    };
+  }, [commentingAllowed]);
+
+  // A new passage, or none, starts again from the small button.
+  useEffect(() => {
+    composing.current = false;
+  }, [selected]);
+
   // The rendered document, memoised so nothing but its own content ever
   // rebuilds it. React re-applies dangerouslySetInnerHTML whenever it
   // reconciles this element, which wipes and rebuilds the child nodes and
@@ -1068,7 +1135,7 @@ function RenderedMarkdown({
     () => (
       <article
         ref={holdArticle}
-        className="prose oa-fade mx-auto w-full max-w-[720px] px-6 py-10"
+        className="prose oa-fade mx-auto w-full max-w-[720px] px-6 py-10 max-md:px-4 max-md:py-6"
         onMouseUp={onSelect}
         dangerouslySetInnerHTML={{ __html: html ?? '' }}
       />
@@ -1103,6 +1170,7 @@ function RenderedMarkdown({
           artifactId={artifactId}
           isArtifactOwner={isArtifactOwner}
           passage={selected}
+          onExpand={() => (composing.current = true)}
           onClose={() => setSelected(null)}
           onCommented={() => {
             setSelected(null);
@@ -1135,12 +1203,15 @@ function SelectionPopover({
   artifactId,
   isArtifactOwner,
   passage,
+  onExpand,
   onClose,
   onCommented,
 }: {
   artifactId: string;
   isArtifactOwner: boolean;
   passage: SelectedPassage;
+  /** The button was pressed and the composer is opening. */
+  onExpand: () => void;
   onClose: () => void;
   onCommented: () => void;
 }) {
@@ -1154,14 +1225,19 @@ function SelectionPopover({
     Math.max(8, passage.rect.left + passage.rect.width / 2 - width / 2),
     window.innerWidth - width - 8,
   );
-  const top = passage.rect.top + passage.rect.height + 8;
+  // Further down on a touch screen, clear of the selection's drag handles.
+  const gap = window.matchMedia('(pointer: coarse)').matches ? 28 : 8;
+  const top = passage.rect.top + passage.rect.height + gap;
 
   if (!expanded) {
     return (
       <div className="oa-pop fixed z-20" style={{ top, left, width }}>
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={() => {
+            onExpand();
+            setExpanded(true);
+          }}
           className="flex w-full items-center justify-center gap-1.5 rounded-[--radius-lg] border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-ink-2 shadow-[--shadow-pop] transition-colors hover:text-ink"
         >
           <CommentGlyph />
