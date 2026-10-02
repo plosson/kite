@@ -23,6 +23,7 @@ import { groupByWorkspace, INBOX_ID, type ListedArtifact } from '../workspaces.j
 import { WorkspaceDialog, MoveDialog } from './WorkspaceDialogs.js';
 import { useNarrowScreen } from '../viewport.js';
 import { SlidingTitle } from './SlidingTitle.js';
+import { KITE_VERSION } from '../version.js';
 
 const COLLAPSE_PREFERENCE = 'oa.sidebar.collapsed';
 const DRAG_TYPE = 'application/x-kite-artifact';
@@ -228,12 +229,18 @@ function Sidebar({
       ].join(' ')}
     >
       <div className="flex h-11 shrink-0 items-center justify-between gap-1 px-2.5">
-        <Link
-          to="/"
-          className="rounded-[--radius-sm] px-1.5 py-1 text-[13px] font-semibold tracking-[-0.02em] text-ink transition-colors hover:bg-sunken"
-        >
-          Kite
-        </Link>
+        <div className="flex min-w-0 items-baseline gap-1">
+          <Link
+            to="/"
+            className="rounded-[--radius-sm] px-1.5 py-1 text-[13px] font-semibold tracking-[-0.02em] text-ink transition-colors hover:bg-sunken"
+          >
+            Kite
+          </Link>
+          {/* Quiet on purpose: there for whoever needs to say which Kite they are on. */}
+          <span className="text-[10.5px] tabular-nums text-ink-3 opacity-70 select-none" title={`Kite ${KITE_VERSION}`}>
+            v{KITE_VERSION}
+          </span>
+        </div>
         <button
           type="button"
           onClick={onToggle}
