@@ -169,6 +169,33 @@ export interface ListArtifactsResponse {
   artifacts: ArtifactSummary[];
 }
 
+/** How many timeline events one request returns when it does not say, and at most. */
+export const TIMELINE_DEFAULT_LIMIT = 500;
+export const TIMELINE_MAX_LIMIT = 2000;
+
+/**
+ * One thing that happened to a document: it was published, or a new version
+ * replaced it. Changing only its title, description or summary writes no
+ * version, so it is not an event.
+ */
+export interface TimelineEvent {
+  artifactId: string;
+  slug: string;
+  /** Its title now, not when this happened, so the timeline names what the list names. */
+  title: string;
+  type: ArtifactType;
+  kind: 'published' | 'edited';
+  /** The version this event made. */
+  version: number;
+  /** UTC ISO-8601. */
+  at: string;
+}
+
+export interface TimelineResponse {
+  /** Newest first, across every document the person can see. */
+  events: TimelineEvent[];
+}
+
 // ---------------------------------------------------------------------------
 // Workspaces
 // ---------------------------------------------------------------------------
