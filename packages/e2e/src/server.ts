@@ -55,7 +55,7 @@ export interface RunningServer {
   signInCodeFor: (email: string) => string;
   /** Signs somebody else in and returns their session cookie, for access checks. */
   signInAs: (email: string) => Promise<string>;
-  /** Connects a command line the way `open-artifact login` does, and returns its token. */
+  /** Connects a command line the way `agentio kite profile add` does, and returns its token. */
   connectCommandLine: (label: string) => Promise<string>;
   /** Gives a Playwright browser context that person's session. */
   signInBrowser: (context: { addCookies: (cookies: BrowserCookie[]) => Promise<void> }) => Promise<void>;

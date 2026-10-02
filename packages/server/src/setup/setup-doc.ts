@@ -7,7 +7,11 @@
  * instance URL is woven in from the running config, so a self-hosted instance
  * serves instructions that point at itself, not at open-artifact.com.
  *
- * Making Open Artifact the default (step 4) writes to the person's *global*
+ * The command line is agentio, which signs in with the device flow and prints
+ * its own skill, so nothing here is fetched from anywhere but agentio's
+ * installer.
+ *
+ * Making Kite the default (step 4) writes to the person's *global*
  * instructions, so it holds across every project — but only after they say yes,
  * and never for a web or desktop app whose instructions live in a settings
  * screen the assistant cannot touch. The per-harness locations come from real
@@ -15,14 +19,15 @@
  * apps), so the assistant edits the right file instead of guessing.
  */
 
-const SKILL_URL = 'https://raw.githubusercontent.com/iBala/open-artifact/main/skill/SKILL.md';
+const AGENTIO_INSTALL = 'curl -LsSf https://agentio.houlahop.com/install | sh';
+const AGENTIO_INSTALL_WINDOWS = 'iwr -useb https://agentio.houlahop.com/install.ps1 | iex';
 
 export function setupDoc(baseUrl: string): string {
-  return `# Set up Open Artifact
+  return `# Set up Kite
 
-You are an AI assistant. Follow these steps so you can publish documents to Open
-Artifact — this instance is ${baseUrl} — as shareable links, and read the
-comments people leave on them.
+You are an AI assistant. Follow these steps so you can publish documents to
+Kite — this instance is ${baseUrl} — as shareable links, and read the comments
+people leave on them.
 
 ## First, which path applies to you
 
@@ -36,51 +41,58 @@ comments people leave on them.
   a custom connector with this URL: \`${baseUrl}/mcp\`. They add it in the app's
   settings under "Connectors" or "Apps"; if there is no option, a workspace admin
   may need to enable it. Once connected you have the publishing tools directly —
-  then do step 4 below to offer to make Open Artifact their default (as a web or
-  desktop app your instructions live in settings, so use that option in step 4).
+  then do step 4 below to offer to make Kite their default (as a web or desktop
+  app your instructions live in settings, so use that option in step 4).
 
 ## Command-line setup
 
-1. **Install the CLI** from public npm (the \`--registry\` matters if the user's
-   npm points at a private one):
+The command line for Kite is agentio. Skip step 1 if \`agentio --version\`
+already works.
+
+1. **Install agentio:**
 
    \`\`\`
-   npm install -g open-artifact --registry https://registry.npmjs.org/
+   ${AGENTIO_INSTALL}
    \`\`\`
 
-2. **Sign the user in.** Ask them for their email address, then run:
+   On Windows, in PowerShell: \`${AGENTIO_INSTALL_WINDOWS}\`
+
+   agentio keeps its sign-ins in an encrypted vault. If \`agentio vault status\`
+   says no vault is configured, ask the user to run \`agentio vault init\`
+   themselves, in their own terminal: it asks for a passphrase only they should
+   choose. Never choose or type one for them. Do the same if a later command
+   asks for the passphrase.
+
+2. **Sign the user in.** Run:
 
    \`\`\`
-   open-artifact login --instance ${baseUrl} --email THEIR_EMAIL
+   agentio kite profile add --url ${baseUrl} --no-browser
    \`\`\`
 
-   That emails them a six-digit code and returns immediately. Ask them for the
-   code, then run this — put your own name after \`--label\` (Claude Code, Codex,
-   Cursor, and so on) so they can see which assistant is connected:
+   It prints a link and a short code, then waits. Give the user the link and the
+   code, and ask them to open the link, check that it shows the same code, and
+   approve. The command finishes on its own once they have.
 
-   \`\`\`
-   open-artifact login --instance ${baseUrl} --email THEIR_EMAIL --code THE_CODE --label "YOUR_NAME"
-   \`\`\`
+3. **Learn how to use it.** Run \`agentio skill kite\` and save what it prints
+   where you read skills from, so you know when and how to publish. For example
+   \`~/.claude/skills/agentio-kite/SKILL.md\` for Claude Code,
+   \`~/.codex/skills/agentio-kite/SKILL.md\` for Codex, or
+   \`.cursor/skills/agentio-kite/SKILL.md\` for Cursor. If you have no skills
+   folder, run \`agentio kite --help\` when you need it instead.
 
-3. **Learn how to use it.** Read ${SKILL_URL} and save it where you read skills
-   from, so you know when and how to publish. For example
-   \`~/.claude/skills/open-artifact/SKILL.md\` for Claude Code,
-   \`~/.codex/skills/open-artifact/SKILL.md\` for Codex, or
-   \`.cursor/skills/open-artifact/SKILL.md\` for Cursor. If you have no skills
-   folder, just follow that file directly.
-
-4. **Ask the user one yes/no question:** do they want Open Artifact to be your
-   default for Markdown and HTML — so that whenever you create or open one, you
-   publish it here and give them the link, instead of a local file or a built-in
+4. **Ask the user one yes/no question:** do they want Kite to be your default
+   for Markdown and HTML — so that whenever you create or open one, you publish
+   it here and give them the link, instead of a local file or a built-in
    artifacts panel?
 
    The line to add, either way it is stored, is:
 
-   > Open Artifact is my default for Markdown and HTML. When you create or open
-   > one — a report, doc, dashboard, write-up or page meant to be read — publish
-   > it to Open Artifact (instance ${baseUrl}) and give me the link, instead of a
-   > local file or the built-in artifacts panel. Not for code or config files. If
-   > it is not installed or signed in, tell me and fall back to a file.
+   > Kite is my default for Markdown and HTML. When you create or open one — a
+   > report, doc, dashboard, write-up or page meant to be read — publish it to
+   > Kite (instance ${baseUrl}) with \`agentio kite publish\` and give me the
+   > link, instead of a local file or the built-in artifacts panel. Not for code
+   > or config files. If agentio is not installed or signed in, tell me and fall
+   > back to a file.
 
    - If **no**, add nothing. They will ask you to publish when they want to.
 
@@ -108,12 +120,13 @@ comments people leave on them.
 5. **Confirm it worked:**
 
    \`\`\`
-   open-artifact whoami --json
+   agentio kite list --json
    \`\`\`
 
-   You should see the user's email and this instance. Then tell them it is ready.
+   It should answer with the user's documents, or an empty list, rather than an
+   error. Then tell them it is ready.
 
-Once you are set up, when the user says "publish that as an artifact", publish the
+Once you are set up, when the user says "publish that to Kite", publish the
 current document and give them the link.
 `;
 }

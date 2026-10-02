@@ -287,7 +287,7 @@ export function CommentsPanel({
  * The get-started prompt for a signed-out reader, shown in the comments footer.
  *
  * Getting started is not signing up on the web — it is pasting one line into an
- * assistant, which installs the CLI and signs the person in. So the copyable
+ * assistant, which installs agentio and signs the person in. So the copyable
  * line leads, and sign-in sits beneath it for people who already have an account.
  */
 function GetStartedFooter({ instance, onSignIn }: { instance: string; onSignIn: () => void }) {
