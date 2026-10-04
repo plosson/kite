@@ -149,7 +149,9 @@ const publishArtifact: McpTool = {
     'In HTML, give each section-level block a short id drawn from what it says — ' +
     'id="pricing-note", not id="p1". Comments attach to those ids, so a comment can point at ' +
     'the block you need to change; a block without one can only be found by its position in ' +
-    'the page, which moves. ' + CHOOSE_WORKSPACE,
+    'the page, which moves. ' +
+    'In Markdown, a ```mermaid block is drawn as a diagram, and so is a ```svg block holding one SVG; ' +
+    'scripts and links inside them are removed. ' + CHOOSE_WORKSPACE,
   inputSchema: {
     type: 'object',
     properties: {

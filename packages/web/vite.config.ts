@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 /** Where the API lives in development. Override when port 3000 is taken. */
 const API = process.env.OPEN_ARTIFACT_API ?? 'http://127.0.0.1:3000';
@@ -25,6 +26,13 @@ export default defineConfig({
     // no separate static host to run.
     outDir: '../server/public',
     emptyOutDir: true,
+    rollupOptions: {
+      // The app, and the page that draws one diagram inside a sandboxed frame.
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        diagramFrame: fileURLToPath(new URL('./diagram-frame.html', import.meta.url)),
+      },
+    },
   },
   server: {
     port: 5173,

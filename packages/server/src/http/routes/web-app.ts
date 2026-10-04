@@ -86,6 +86,30 @@ function policyFor(scriptHashes: string[]): string {
 }
 
 /**
+ * The policy of the page that draws one diagram from a Markdown kite.
+ *
+ * The app frames it with `sandbox="allow-scripts"`, and `sandbox allow-scripts`
+ * here makes the same true if anybody opens it directly: it always runs at an
+ * opaque origin, so whatever a diagram contains cannot reach the reader's
+ * session. It may load this instance's own scripts and nothing else, and it can
+ * reach no network at all, so a diagram has nowhere to send what it is shown.
+ */
+export const DIAGRAM_FRAME_POLICY = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  'img-src data:',
+  'font-src data:',
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "object-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'self'",
+  'sandbox allow-scripts',
+].join('; ');
+
+/**
  * SHA-256 hashes of every inline script in the shell, in CSP form.
  *
  * Read from the built file at startup rather than written down here. A hash
@@ -118,6 +142,8 @@ export function registerWebAppRoutes(app: Hono<AppEnv>, context: AppContext): vo
 
   const shell = readFileSync(indexPath, 'utf8');
   const policy = policyFor(inlineScriptHashes(shell));
+  const diagramFramePath = join(PUBLIC_DIR, 'diagram-frame.html');
+  const diagramFrame = existsSync(diagramFramePath) ? readFileSync(diagramFramePath, 'utf8') : null;
 
   app.get('*', async (c, next) => {
     const requestPath = new URL(c.req.url).pathname;
@@ -127,6 +153,13 @@ export function registerWebAppRoutes(app: Hono<AppEnv>, context: AppContext): vo
     // should be told so, not handed HTML to parse.
     if (requestPath.startsWith('/api/')) return next();
 
+    if (requestPath === '/diagram-frame.html' && diagramFrame !== null) {
+      c.header('Cache-Control', 'no-cache');
+      c.header('X-Content-Type-Options', 'nosniff');
+      c.header('Content-Security-Policy', DIAGRAM_FRAME_POLICY);
+      return c.html(diagramFrame);
+    }
+
     const asset = readAsset(requestPath);
     if (asset) {
       // Built asset names contain a content hash, so a given URL never changes
@@ -134,6 +167,10 @@ export function registerWebAppRoutes(app: Hono<AppEnv>, context: AppContext): vo
       const immutable = requestPath.startsWith('/assets/');
       c.header('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache');
       c.header('X-Content-Type-Options', 'nosniff');
+      // The diagram frame runs at an opaque origin, so to the browser its own
+      // module scripts are cross-origin and need this. They are the same public
+      // code anybody can download, holding no data.
+      if (immutable) c.header('Access-Control-Allow-Origin', '*');
       return c.body(new Uint8Array(asset.body), 200, { 'Content-Type': asset.contentType });
     }
 

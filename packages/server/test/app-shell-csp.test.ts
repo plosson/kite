@@ -136,3 +136,60 @@ describe.runIf(built)('the policy a browser is given', () => {
     expect(header).not.toContain("frame-src 'self'");
   });
 });
+
+describe.runIf(existsSync(resolve(process.cwd(), 'public/diagram-frame.html')))(
+  'the page that draws a diagram',
+  () => {
+    let server: TestServer;
+
+    beforeEach(() => {
+      server = createTestServer({ SIGNUP_MODE: 'open' }, { serveWebApp: true });
+    });
+
+    afterEach(() => {
+      server.close();
+    });
+
+    async function policyOf(path: string): Promise<string> {
+      const response = await server.request(path);
+      expect(response.status).toBe(200);
+      return response.headers.get('content-security-policy') ?? '';
+    }
+
+    it('is always sandboxed, even opened on its own, so it can never run as this origin', async () => {
+      const policy = await policyOf('/diagram-frame.html');
+      expect(policy).toContain('sandbox allow-scripts');
+      expect(policy).not.toContain('allow-same-origin');
+    });
+
+    it('reaches no network and loads nothing but this instance\'s own scripts', async () => {
+      const policy = await policyOf('/diagram-frame.html');
+      expect(policy).toContain("connect-src 'none'");
+      expect(policy).toContain("script-src 'self'");
+      expect(policy).not.toMatch(/script-src[^;]*'unsafe-(inline|eval)'/);
+      expect(policy).toContain("form-action 'none'");
+      expect(policy).toContain("frame-ancestors 'self'");
+    });
+
+    it('is the diagram page, not the app shell with the app\'s policy', async () => {
+      const response = await server.request('/diagram-frame.html');
+      const body = await response.text();
+      expect(body).toContain('id="diagram"');
+      expect(body).not.toContain('id="root"');
+    });
+
+    it('lets the sandboxed frame load built scripts, and only those', async () => {
+      const page = await (await server.request('/diagram-frame.html')).text();
+      const script = /src="(\/assets\/[^"]+\.js)"/.exec(page)?.[1];
+      expect(script).toBeDefined();
+      const asset = await server.request(script!);
+      expect(asset.headers.get('access-control-allow-origin')).toBe('*');
+
+      // Nothing outside the hashed build gets it: not the app shell, not the API.
+      const shell = await server.request('/');
+      expect(shell.headers.get('access-control-allow-origin')).toBeNull();
+      const api = await server.request('/api/auth/methods');
+      expect(api.headers.get('access-control-allow-origin')).toBeNull();
+    });
+  },
+);

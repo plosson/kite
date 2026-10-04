@@ -17,6 +17,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
+import { DIAGRAM_LANGUAGES } from '@open-artifact/shared';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeSlug from 'rehype-slug';
 import rehypeHighlight from 'rehype-highlight';
@@ -134,7 +135,10 @@ function buildProcessor(wrapBaseUrl: string | null) {
     // dependency is obvious.
     .use(rehypeBlockOffsets)
     .use(rehypeSlug)
-    .use(rehypeHighlight, { detect: false, ignoreMissing: true });
+    // Diagram sources are left as plain text: the app draws them in an isolated
+    // frame, and highlighting would split an SVG block into coloured spans
+    // (highlight.js reads "svg" as XML) that the frame would then receive.
+    .use(rehypeHighlight, { detect: false, ignoreMissing: true, plainText: [...DIAGRAM_LANGUAGES] });
 
   // Runs before the sanitiser on purpose: the href we write ("/leaving?to=...")
   // is relative and still has to pass the allowlist below, so nothing this

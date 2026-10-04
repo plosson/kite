@@ -189,3 +189,53 @@ describe('off-site links in a public artifact', () => {
     expect(html).not.toContain('/leaving');
   });
 });
+
+describe('diagram blocks', () => {
+  /** The text the browser would read out of the first code element. */
+  function codeText(html: string): string {
+    const match = /<code[^>]*>([\s\S]*?)<\/code>/.exec(html);
+    return (match?.[1] ?? '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number(dec)))
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&');
+  }
+
+  it('keeps a mermaid block as plain, unhighlighted source with its language', () => {
+    const source = 'graph TD\n  A["Start & go"] --> B{Choice?}\n  B -->|yes| C';
+    const html = renderMarkdown('```mermaid\n' + source + '\n```');
+    expect(html).toContain('class="language-mermaid"');
+    expect(html).not.toContain('hljs');
+    expect(codeText(html)).toBe(`${source}\n`);
+  });
+
+  it('keeps an svg block as text, never as live markup in the page', () => {
+    const source = '<svg viewBox="0 0 10 10"><circle r="4" onload="alert(1)"/><script>alert(2)</script></svg>';
+    const html = renderMarkdown('```svg\n' + source + '\n```');
+    expect(html).toContain('class="language-svg"');
+    // Not highlighted as XML: no spans splitting the source.
+    expect(html).not.toContain('hljs');
+    // Every angle bracket is escaped, so nothing in it is an element.
+    expect(html).not.toMatch(/<svg|<circle|<script/);
+    expect(codeText(html)).toBe(`${source}\n`);
+  });
+
+  it('still highlights an ordinary code block', () => {
+    const html = renderMarkdown('```js\nconst a = 1;\n```');
+    expect(html).toContain('hljs');
+  });
+
+  it('keeps the source offsets on a diagram block, so editing it still works', () => {
+    const html = renderMarkdown('# Title\n\n```mermaid\ngraph TD\n  A --> B\n```\n');
+    expect(html).toMatch(/<pre[^>]*data-src-start="\d+"[^>]*data-src-end="\d+"/);
+  });
+
+  it('does not treat a language that only looks like one as a diagram', () => {
+    const html = renderMarkdown('```mermaid-ish\nx\n```\n\n```SVG\n<svg/>\n```');
+    expect(html).not.toContain('class="language-mermaid"');
+    expect(html).not.toContain('class="language-svg"');
+  });
+});

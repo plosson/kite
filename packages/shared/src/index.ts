@@ -19,5 +19,12 @@ export function artifactTypeForExtension(extension: string): ArtifactType | null
   return null;
 }
 
+/**
+ * Fenced-block languages drawn as diagrams instead of shown as code. The server
+ * keeps their source intact; the app draws them in a sandboxed frame.
+ */
+export const DIAGRAM_LANGUAGES = ['mermaid', 'svg'] as const;
+export type DiagramLanguage = (typeof DIAGRAM_LANGUAGES)[number];
+
 export * from './api-types.js';
 export * from './expiry.js';
