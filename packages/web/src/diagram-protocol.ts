@@ -3,11 +3,11 @@
  * diagrams. Kept in one place so both sides read the same shapes.
  */
 
-export const DIAGRAM_MESSAGE = 'kite-diagram';
+import { DIAGRAM_LANGUAGES, type DiagramLanguage } from '@open-artifact/shared';
 
-/** Fenced-block languages drawn as diagrams. Must match DIAGRAM_LANGUAGES on the server. */
-export const DIAGRAM_LANGUAGES = ['mermaid', 'svg'] as const;
-export type DiagramLanguage = (typeof DIAGRAM_LANGUAGES)[number];
+export { DIAGRAM_LANGUAGES, type DiagramLanguage };
+
+export const DIAGRAM_MESSAGE = 'kite-diagram';
 
 /** Page to frame: draw this, once. */
 export interface DiagramRequest {

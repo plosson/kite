@@ -17,6 +17,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
+import { DIAGRAM_LANGUAGES } from '@open-artifact/shared';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeSlug from 'rehype-slug';
 import rehypeHighlight from 'rehype-highlight';
@@ -80,13 +81,6 @@ export const SANITIZE_SCHEMA: Schema = {
     src: ['http', 'https'],
   },
 };
-
-/**
- * Fenced-block languages the app draws as diagrams instead of showing as code.
- * The server only keeps their source intact; drawing happens in the browser, in
- * a sandboxed frame, so nothing in a diagram ever runs in the reader's page.
- */
-export const DIAGRAM_LANGUAGES = ['mermaid', 'svg'] as const;
 
 export interface RenderOptions {
   /**
