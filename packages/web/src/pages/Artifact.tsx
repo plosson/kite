@@ -54,6 +54,8 @@ import {
 import { NotFound } from './NotFound.js';
 import { SidebarButton } from '../components/Sidebar.js';
 import { describeRemaining } from '@open-artifact/shared';
+import { drawDiagrams } from '../diagrams.js';
+import { useTheme } from '../theme.jsx';
 import type { CommentThread } from '@open-artifact/shared';
 
 // ---------------------------------------------------------------------------
@@ -1166,6 +1168,15 @@ function RenderedMarkdown({
   useEffect(() => {
     composing.current = false;
   }, [selected]);
+
+  // Diagram blocks are drawn in sandboxed frames. Not while editing: the editor
+  // works on the blocks' source, which has to be there to click on.
+  const { theme } = useTheme();
+  useEffect(() => {
+    const element = article.current;
+    if (!element || html === null || editing) return;
+    return drawDiagrams(element, theme === 'dark');
+  }, [html, editing, theme]);
 
   // The rendered document, memoised so nothing but its own content ever
   // rebuilds it. React re-applies dangerouslySetInnerHTML whenever it
