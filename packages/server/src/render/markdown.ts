@@ -81,6 +81,13 @@ export const SANITIZE_SCHEMA: Schema = {
   },
 };
 
+/**
+ * Fenced-block languages the app draws as diagrams instead of showing as code.
+ * The server only keeps their source intact; drawing happens in the browser, in
+ * a sandboxed frame, so nothing in a diagram ever runs in the reader's page.
+ */
+export const DIAGRAM_LANGUAGES = ['mermaid', 'svg'] as const;
+
 export interface RenderOptions {
   /**
    * Turn on the off-site link interstitial. Set for PUBLIC artifacts only, and
@@ -134,7 +141,10 @@ function buildProcessor(wrapBaseUrl: string | null) {
     // dependency is obvious.
     .use(rehypeBlockOffsets)
     .use(rehypeSlug)
-    .use(rehypeHighlight, { detect: false, ignoreMissing: true });
+    // Diagram sources are left as plain text: the app draws them in an isolated
+    // frame, and highlighting would split an SVG block into coloured spans
+    // (highlight.js reads "svg" as XML) that the frame would then receive.
+    .use(rehypeHighlight, { detect: false, ignoreMissing: true, plainText: [...DIAGRAM_LANGUAGES] });
 
   // Runs before the sanitiser on purpose: the href we write ("/leaving?to=...")
   // is relative and still has to pass the allowlist below, so nothing this
