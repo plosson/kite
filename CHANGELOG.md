@@ -29,6 +29,41 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
+## Not released yet
+
+### See who opened a document
+
+> **As an author,** I want to see who opened my document, **so that** I know
+> if the people I sent it to read it.
+
+Open one of your documents and click **Views**. The panel shows:
+
+- How many times other people opened it.
+- How many different people that was.
+- Each person who opened it, how they got in, and the last version they saw.
+- If nobody has opened the current version yet.
+
+Your list of documents shows the count next to each one. "Unread" means that
+nobody opened the newest version.
+
+```
+  Launch plan          3 views  2 hours ago
+  Board notes  Unread  1 view   yesterday
+```
+
+Some opens are not counted as views:
+
+- Your own opens.
+- Reads by agents, for example agentio or a connected assistant.
+
+The panel shows these two numbers separately.
+
+A person who is not signed in shows as "Anonymous" with a short id. Open
+Artifact does not store their IP address. Only you can see this information.
+Open Artifact deletes it after 180 days. The operator can change this period.
+
+---
+
 ## 31 August 2026
 
 ### Edit a block as you read it

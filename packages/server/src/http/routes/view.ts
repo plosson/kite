@@ -30,6 +30,7 @@ import type { AppContext, AppEnv } from '../app.js';
 import { renderMarkdown } from '../../render/markdown.js';
 import { requireAccess, canAccess } from '../../artifacts/access.js';
 import { BRIDGE_SCRIPT } from '../../comments/bridge.js';
+import { recordView } from './views.js';
 
 /**
  * What artifact content is allowed to do.
@@ -64,7 +65,15 @@ export function registerViewRoutes(app: Hono<AppEnv>, context: AppContext): void
    */
   app.get('/a/:slug/content', (c) => {
     const artifact = artifacts.getBySlug(c.req.param('slug'));
-    requireAccess(c.get('user') ?? null, sharing.accessFactsFor(artifact), 'view');
+    const facts = sharing.accessFactsFor(artifact);
+    requireAccess(c.get('user') ?? null, facts, 'view');
+
+    // Somebody pasted this address straight into a tab, so the app's own page
+    // never loaded and never counted the open. The app's own frame and fetch
+    // send a different Sec-Fetch-Dest, and are counted by the page instead.
+    if (c.req.header('sec-fetch-dest') === 'document') {
+      recordView(c, context, artifact, facts, 'browser');
+    }
 
     c.header('Content-Security-Policy', CONTENT_SECURITY_POLICY);
     c.header('X-Content-Type-Options', 'nosniff');

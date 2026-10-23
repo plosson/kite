@@ -15,6 +15,7 @@ import { ApiError } from '../errors.js';
 import { type Logger, silentLogger } from '../logging.js';
 import { registerArtifactRoutes } from './routes/artifacts.js';
 import { registerWorkspaceRoutes } from './routes/workspaces.js';
+import { registerViewsRoutes } from './routes/views.js';
 import { registerViewRoutes } from './routes/view.js';
 import { registerLeavingRoutes } from './routes/leaving.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -33,6 +34,7 @@ import { NotificationService } from '../notifications/service.js';
 import { CommentService } from '../comments/service.js';
 import { SharingService } from '../artifacts/sharing.js';
 import { WorkspaceService } from '../workspaces/service.js';
+import { ViewService } from '../views/service.js';
 import { buildOpenApiDocument } from './openapi.js';
 import { AuthService } from '../auth/service.js';
 import { OAuthService } from '../auth/oauth.js';
@@ -70,6 +72,7 @@ export interface AppContext {
   notifications: NotificationService;
   oauth: OAuthService;
   rateLimiter: RateLimiter;
+  views: ViewService;
   mailer: Mailer;
   google: GoogleClient;
   logger: Logger;
@@ -82,6 +85,12 @@ export type AppEnv = {
     logger: Logger;
     /** The signed-in person, if this request carried a valid credential. */
     user?: UserRow;
+    /**
+     * How they proved it: a browser session cookie, or a command-line token. A
+     * token is an agent, which is what keeps an agent re-reading its own work
+     * from being counted as somebody reading it.
+     */
+    credential?: 'session' | 'token';
   };
 };
 
@@ -134,6 +143,11 @@ export function createApp({
     notifications,
     oauth: new OAuthService({ db: database.db, auth }),
     rateLimiter: createRateLimiter(),
+    views: new ViewService({
+      db: database.db,
+      secret: config.sessionSecret,
+      retentionDays: config.viewRetentionDays,
+    }),
     devices: new DeviceFlowService({ db: database.db, auth, baseUrl: config.baseUrl }),
   };
 
@@ -170,6 +184,7 @@ export function createApp({
   registerAccountRoutes(app, context);
   registerArtifactRoutes(app, context);
   registerWorkspaceRoutes(app, context);
+  registerViewsRoutes(app, context);
   registerSharingRoutes(app, context);
   registerCommentRoutes(app, context);
   registerNotificationRoutes(app, context);

@@ -787,7 +787,57 @@ export const notifications = sqliteTable(
   ],
 );
 
+/**
+ * One time somebody opened a document.
+ *
+ * Written so the owner can tell whether what they published is being read, not
+ * to follow anybody around. Three rules shape it:
+ *
+ * - Private to the owner. Only the owner's own endpoints read it, and a reader
+ *   is never told they were counted.
+ * - No addresses. A signed-in reader is recorded by account. A reader with no
+ *   account is recorded by `viewer_key`, a keyed hash of their address and
+ *   browser that lets unique readers be counted and cannot be turned back into
+ *   either without this instance's secret. The address itself is never written.
+ * - Kept for a limited time. Rows older than VIEW_RETENTION_DAYS are removed.
+ *
+ * Repeat opens by the same reader of the same version within a short window are
+ * one row, so a reload or a tab left open does not read as interest.
+ */
+export const artifactViews = sqliteTable(
+  'artifact_views',
+  {
+    id: text('id').primaryKey(),
+    artifactId: text('artifact_id')
+      .notNull()
+      .references(() => artifacts.id, { onDelete: 'cascade' }),
+    /** The version that was on screen. */
+    version: integer('version').notNull(),
+    viewedAt: text('viewed_at').notNull(),
+    /** The signed-in reader. Null for somebody reading a public link signed out. */
+    viewerUserId: text('viewer_user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Who, as one comparable value: `u:<user id>` for an account, `a:<hash>` for
+     * a signed-out reader. Counting distinct values is counting readers.
+     */
+    viewerKey: text('viewer_key').notNull(),
+    /** How they got in: owner, shared-with-you, shared-with-your-domain or public. */
+    access: text('access').notNull(),
+    /**
+     * What opened it: 'browser' for a person in the web app, 'api' for a
+     * command-line client such as agentio, 'mcp' for a connected assistant.
+     */
+    client: text('client').notNull(),
+  },
+  (table) => [
+    index('artifact_views_artifact_idx').on(table.artifactId, table.viewedAt),
+    index('artifact_views_viewer_idx').on(table.artifactId, table.viewerKey, table.viewedAt),
+    index('artifact_views_viewed_at_idx').on(table.viewedAt),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
+export type ArtifactViewRow = typeof artifactViews.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type CommentMentionRow = typeof commentMentions.$inferSelect;
 export type AccessRequestRow = typeof accessRequests.$inferSelect;

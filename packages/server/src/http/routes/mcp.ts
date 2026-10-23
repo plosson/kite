@@ -137,6 +137,7 @@ export function registerMcpRoutes(app: Hono<AppEnv>, context: AppContext): void 
       mailer: context.mailer,
       rateLimiter,
       config: context.config,
+      views: context.views,
       user: principal.user,
       connection: principal.connection,
     };

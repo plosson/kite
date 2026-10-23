@@ -11,7 +11,11 @@
  *   telemetry SDK and you find nothing; the CSP in routes/web-app.ts would not
  *   let one load anyway.
  * - IP addresses are used for rate limiting and never stored. The windows in
- *   http/rate-limit.ts live in memory and no table has an address column.
+ *   http/rate-limit.ts live in memory and no table has an address column. The
+ *   open records in views/service.ts keep a keyed hash of address and browser
+ *   for a signed-out reader, never the address itself.
+ * - Opens are recorded for the owner and for nobody else, and they expire:
+ *   views/service.ts, VIEW_RETENTION_DAYS.
  * - Closing an account really removes it. auth/account-deletion.ts deletes the
  *   artifacts, the sessions, the tokens and the grants in one transaction.
  *
@@ -30,6 +34,8 @@ export interface PrivacyDocInput {
   contactEmail: string | null;
   /** Whether sign-in codes and notifications leave the instance over SMTP. */
   sendsEmail: boolean;
+  /** How long a record of a document being opened is kept, from VIEW_RETENTION_DAYS. */
+  viewRetentionDays: number;
 }
 
 export function privacyDoc(input: PrivacyDocInput): string {
@@ -37,7 +43,7 @@ export function privacyDoc(input: PrivacyDocInput): string {
 
   return `# Privacy policy
 
-**Instance:** ${host} · **Last updated:** 13 August 2026
+**Instance:** ${host} · **Last updated:** 23 October 2026
 
 This policy describes what ${host} does with your information. ${host} runs
 [Kite](https://github.com/plosson/kite), a modified version of [Open Artifact](https://github.com/iBala/open-artifact), which anyone can
@@ -75,6 +81,15 @@ and when it was last used. Credentials themselves are stored only as hashes: the
 raw session token, CLI token, sign-in code and OAuth code exist in the database
 as a hash and nowhere else.
 
+**When a document is opened.** Each time somebody opens a document, a record is
+kept for its owner: which document and version, when, and how the reader got in
+(the owner, a share, or a public link). A signed-in reader is recorded by their
+account. A signed-out reader is recorded as a keyed hash of their IP address and
+browser, cut short, so the owner can tell two readers apart without anybody
+learning who they are or where from; the address itself is not stored. The same
+reader opening the same version again within half an hour is one record. Only the
+document's owner can see these records.
+
 ## What is not collected
 
 **No analytics and no trackers.** There is no analytics SDK, no session
@@ -82,7 +97,9 @@ recording, no advertising pixel and no third-party script of any kind. The
 content security policy the app is served under would block one.
 
 **No IP address logging.** Addresses are read to rate-limit requests and are held
-in memory for the length of the rate-limit window. No table stores an address.
+in memory for the length of the rate-limit window. No table stores an address;
+the record of a signed-out reader opening a document holds a keyed hash of one,
+which cannot be turned back into it.
 
 **No cookies except the one that signs you in.** There is a session cookie, and a
 short-lived one during Google sign-in if the operator has enabled it. There are
@@ -116,7 +133,9 @@ shared with you.
 
 ## How long it is kept
 
-Documents, comments and shares are kept until you delete them. Sign-in codes
+Documents, comments and shares are kept until you delete them. Records of a
+document being opened are deleted after ${input.viewRetentionDays} days, and with the document.
+Sign-in codes
 expire in minutes. Sessions and tokens carry their own expiry and are removed
 when they are revoked or when you close your account.
 
@@ -127,7 +146,8 @@ bottom of the sidebar to open **Where you are signed in**; "Close this account"
 is at the foot of that page.
 It is not a flag on a row: closing an account deletes your documents and every
 version of them, the comments on them, the shares, the notifications, your
-sessions and every connected assistant's access, in a single transaction.
+sessions, every connected assistant's access, and the record of you opening
+other people's documents, in a single transaction.
 Comments you left on documents belonging to other people are detached from you
 rather than removed, because deleting them would cut holes in a conversation
 somebody else is still having.

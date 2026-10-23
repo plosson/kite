@@ -53,6 +53,11 @@ export interface Config {
    * submitted anywhere, and the address then does not exist at all.
    */
   openaiAppsChallenge: string | null;
+  /**
+   * How many days a record of somebody opening a document is kept. Older records
+   * are removed, so "who read this" is a recent answer rather than a history.
+   */
+  viewRetentionDays: number;
 
   /**
    * How much one person may keep and how fast they may do things.
@@ -279,6 +284,7 @@ export function loadConfig(env: Env): Config {
     smtp: readSmtp(env, isProduction, problems),
     privacyContactEmail: read(env, 'PRIVACY_CONTACT_EMAIL') ?? null,
     openaiAppsChallenge: read(env, 'OPENAI_APPS_CHALLENGE') ?? null,
+    viewRetentionDays: readInteger(env, 'VIEW_RETENTION_DAYS', 180, problems, { min: 1, max: 3650 }),
     limits: {
       artifactsPerUser: readInteger(env, 'MAX_ARTIFACTS_PER_USER', 500, problems, {
         min: 1,

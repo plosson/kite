@@ -41,6 +41,7 @@ import {
   notifications,
   workspaces,
   workspacePlacements,
+  artifactViews,
 } from '../db/schema.js';
 import { nowIso } from '../time.js';
 import { ApiError } from '../errors.js';
@@ -106,6 +107,11 @@ export function deleteAccount(db: Db, userId: string): AccountDeletionSummary {
     // first, though deleting the workspaces would take most of them anyway.
     tx.delete(workspacePlacements).where(eq(workspacePlacements.userId, userId)).run();
     tx.delete(workspaces).where(eq(workspaces.userId, userId)).run();
+
+    // The record of them opening other people's documents. The users row is
+    // kept, so the foreign key never cascades this either. Their opens drop out
+    // of other owners' counts, which is the point: they asked to be forgotten.
+    tx.delete(artifactViews).where(eq(artifactViews.viewerUserId, userId)).run();
 
     // Anything they could still sign in or act with. Deleted rather than
     // revoked: a revoked row still says which account it belonged to.

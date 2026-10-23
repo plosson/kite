@@ -23,9 +23,17 @@ import type {
   WorkspaceSummary,
   ListWorkspacesResponse,
   TimelineResponse,
+  ArtifactViewsResponse,
+  ViewsSummaryResponse,
 } from '@open-artifact/shared';
 
 export type { TimelineEvent } from '@open-artifact/shared';
+export type {
+  ArtifactViewsResponse,
+  ArtifactViewCounts,
+  ViewViewer,
+  ViewsSummaryResponse,
+} from '@open-artifact/shared';
 
 export type {
   CommentThread,
@@ -298,6 +306,10 @@ export const endpoints = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workspaceId }),
     }),
+
+  // --- Who opened it (owner only) ---
+  views: (id: string) => api<ArtifactViewsResponse>(`/api/artifacts/${id}/views`),
+  viewsSummary: () => api<ViewsSummaryResponse>('/api/views'),
 
   // --- Sharing ---
   sharing: (id: string) => api<SharingState>(`/api/artifacts/${id}/sharing`),

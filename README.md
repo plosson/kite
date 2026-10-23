@@ -82,6 +82,26 @@ email domains. `open` lets anyone in. Every setting is explained in
 `deploy/env.example`, and the server refuses to boot with a clear message if
 something is missing or contradictory.
 
+### Who opened it
+
+The owner of a document can see who opened it: a count next to each of their
+documents in the list, and a **Views** panel on the document itself. It answers
+"did anybody read what I sent?", and it is careful about what it counts:
+
+- A **view** is somebody other than the owner opening the document in a browser.
+  A signed-in reader is shown by email. A signed-out reader of a public link is
+  an anonymous id, a keyed hash of address and browser: the address itself is
+  never stored.
+- The owner's own opens, and reads by agents (a command-line token or a
+  connected assistant), are recorded beside the count, never inside it.
+- The same reader opening the same version again within 30 minutes is one view.
+- Records are deleted after `VIEW_RETENTION_DAYS` (180 by default), and with the
+  document. Nobody but the owner can read them, and nothing leaves the instance.
+
+Agents read the same numbers from `GET /api/artifacts/:id/views` (one document,
+with each reader) and `GET /api/views` (every document, including which ones
+have a current version nobody has opened). Both are in `/openapi.json`.
+
 ## Connect your agent
 
 Two ways in, depending on the assistant.
