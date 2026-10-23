@@ -511,24 +511,33 @@ export type ViewViewer =
 
 /** The few numbers the list shows next to each of your documents. */
 export interface ArtifactViewCounts {
-  /** Opens by people other than you, in a browser. */
+  /** Opens in a browser, yours included. Agent reads are not views. */
   views: number;
-  /** How many different people (or anonymous browsers) those were. */
+  /** How many different people (or anonymous browsers) those were, you included. */
   uniqueViewers: number;
-  /** The last time somebody other than you opened it. Null if nobody has. */
+  /** The last time anybody, you included, opened it. Null if nobody has. */
   lastViewedAt: string | null;
-  /** Whether somebody other than you has opened the current version. */
+  /** Whether anybody, you included, has opened the current version in a browser. */
   openedSinceLatestVersion: boolean;
+  /** Of `views`, how many were yours. */
+  ownerViews: number;
+  /** Of `views`, how many were somebody else's. */
+  otherViews: number;
 }
 
 export interface ArtifactViewTotals {
-  /** Opens by people other than the owner, in a browser. */
+  /** Opens in a browser, the owner's included. */
   views: number;
+  /** Different people (or anonymous browsers), the owner included. */
   uniqueViewers: number;
   /** Of those unique viewers, how many were signed out (a public link). */
   anonymousViewers: number;
-  /** The owner opening their own document. Not counted as reading. */
+  /** Of `views`, the owner opening their own document. */
   ownerViews: number;
+  /** Of `views`, everybody else. */
+  otherViews: number;
+  /** Of `uniqueViewers`, everybody but the owner. */
+  otherViewers: number;
   /** Reads by command-line clients and connected assistants. Not counted as reading. */
   agentFetches: number;
 }
@@ -536,6 +545,8 @@ export interface ArtifactViewTotals {
 /** One person (or anonymous browser) who opened a document. */
 export interface ArtifactViewer {
   viewer: ViewViewer;
+  /** True for the owner's own row, which the app labels "You". */
+  isOwner: boolean;
   access: ViewAccessPath;
   views: number;
   firstViewedAt: string;
@@ -566,7 +577,7 @@ export interface ArtifactViewsResponse {
   lastViewedAt: string | null;
   lastViewedVersion: number | null;
   openedSinceLatestVersion: boolean;
-  /** People other than the owner who opened it in a browser, most recent first. */
+  /** Everybody who opened it in a browser, the owner included, most recent first. */
   viewers: ArtifactViewer[];
   /** Every open, including the owner's and agents', newest first. */
   recent: ArtifactViewEvent[];
@@ -581,7 +592,6 @@ export interface ArtifactViewSummary extends ArtifactViewCounts {
   version: number;
   latestVersionAt: string;
   lastViewedVersion: number | null;
-  ownerViews: number;
   agentFetches: number;
 }
 
@@ -590,10 +600,10 @@ export interface ViewsSummaryResponse {
   retentionDays: number;
   totals: {
     documents: number;
-    /** Documents somebody other than you has opened at least once. */
+    /** Documents anybody, you included, has opened in a browser at least once. */
     opened: number;
     neverOpened: number;
-    /** Documents whose current version nobody other than you has opened. */
+    /** Documents whose current version nobody, you included, has opened. */
     notOpenedSinceLatestVersion: number;
     views: number;
   };

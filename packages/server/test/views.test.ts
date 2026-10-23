@@ -14,10 +14,11 @@ import { ViewService } from '../src/views/service.js';
 /**
  * Who opened a document, as its owner sees it.
  *
- * The number that matters is people other than the owner opening it in a
- * browser. Everything else that reads a document, the owner's own tab and an
- * agent checking its work, is recorded beside that number, never inside it.
- * And none of it is anybody's business but the owner's.
+ * The number that matters is people opening it in a browser, and that
+ * includes the owner: an author reading what an agent produced for them is
+ * reading it. The split by you and by others is kept beside it. An agent
+ * checking its work is recorded beside that number, never inside it. And none
+ * of it is anybody's business but the owner's.
  */
 
 let server: TestServer;
@@ -88,10 +89,11 @@ describe('what counts as a view', () => {
     expect((await open(reader)).status).toBe(200);
 
     const views = await viewsOf();
-    expect(views.totals).toMatchObject({ views: 1, uniqueViewers: 1, ownerViews: 0, agentFetches: 0 });
+    expect(views.totals).toMatchObject({ views: 1, uniqueViewers: 1, ownerViews: 0, otherViews: 1, otherViewers: 1, agentFetches: 0 });
     expect(views.viewers).toHaveLength(1);
     expect(views.viewers[0]).toMatchObject({
       viewer: { kind: 'user', email: reader.email },
+      isOwner: false,
       views: 1,
       access: 'shared-with-you',
       lastVersion: 1,
@@ -100,13 +102,32 @@ describe('what counts as a view', () => {
     expect(views.openedSinceLatestVersion).toBe(true);
   });
 
-  it('keeps the owner opening their own document out of the count', async () => {
+  it('counts the owner opening their own document, and says it was them', async () => {
     await open(owner);
     const views = await viewsOf();
-    expect(views.totals).toMatchObject({ views: 0, uniqueViewers: 0, ownerViews: 1 });
-    expect(views.viewers).toHaveLength(0);
+    expect(views.totals).toMatchObject({ views: 1, uniqueViewers: 1, ownerViews: 1, otherViews: 0, otherViewers: 0 });
+    expect(views.viewers).toHaveLength(1);
+    expect(views.viewers[0]).toMatchObject({ isOwner: true, access: 'owner', views: 1, lastVersion: 1 });
     expect(views.recent[0]).toMatchObject({ access: 'owner', client: 'browser' });
-    expect(views.openedSinceLatestVersion).toBe(false);
+    expect(views.lastViewedAt).not.toBeNull();
+    expect(views.lastViewedVersion).toBe(1);
+    // Reading the latest version yourself counts as it having been read.
+    expect(views.openedSinceLatestVersion).toBe(true);
+  });
+
+  it('splits the views between the owner and everybody else', async () => {
+    await shareWith(reader.email);
+    await open(owner);
+    await open(reader);
+    const views = await viewsOf();
+    expect(views.totals).toMatchObject({ views: 2, uniqueViewers: 2, ownerViews: 1, otherViews: 1, otherViewers: 1 });
+    expect(views.viewers.map((viewer) => viewer.isOwner).sort()).toEqual([false, true]);
+  });
+
+  it('folds the owner reloading into one view, like anybody else', async () => {
+    await open(owner);
+    await open(owner);
+    expect((await viewsOf()).totals).toMatchObject({ views: 1, ownerViews: 1 });
   });
 
   it('counts a command-line read as an agent fetch, not a view', async () => {
@@ -257,7 +278,11 @@ describe('who can see the record', () => {
     await open(reader);
 
     const mine = (await (await owner.as('/api/artifacts')).json()) as { artifacts: ArtifactSummary[] };
-    expect(mine.artifacts[0]?.views).toMatchObject({ views: 1, uniqueViewers: 1, openedSinceLatestVersion: true });
+    expect(mine.artifacts[0]?.views).toMatchObject({ views: 1, uniqueViewers: 1, openedSinceLatestVersion: true, ownerViews: 0, otherViews: 1 });
+
+    await open(owner);
+    const after = (await (await owner.as('/api/artifacts')).json()) as { artifacts: ArtifactSummary[] };
+    expect(after.artifacts[0]?.views).toMatchObject({ views: 2, uniqueViewers: 2, ownerViews: 1, otherViews: 1 });
 
     const shared = JSON.stringify(await (await reader.as('/api/shared-with-me')).json());
     expect(shared).not.toContain('uniqueViewers');
@@ -284,6 +309,25 @@ describe('the account summary', () => {
     await open(reader);
     const after = (await (await owner.as('/api/views')).json()) as ViewsSummaryResponse;
     expect(after.totals.notOpenedSinceLatestVersion).toBe(1);
+  });
+
+  it('counts a document the owner opened as opened, and its latest version as read', async () => {
+    await update('# Plan, revised', 1);
+    let summary = (await (await owner.as('/api/views')).json()) as ViewsSummaryResponse;
+    expect(summary.totals).toMatchObject({ documents: 1, opened: 0, neverOpened: 1, notOpenedSinceLatestVersion: 1 });
+
+    await open(owner);
+    summary = (await (await owner.as('/api/views')).json()) as ViewsSummaryResponse;
+    expect(summary.totals).toMatchObject({ documents: 1, opened: 1, neverOpened: 0, notOpenedSinceLatestVersion: 0, views: 1 });
+    expect(summary.artifacts[0]).toMatchObject({ views: 1, ownerViews: 1, otherViews: 0, lastViewedVersion: 2, openedSinceLatestVersion: true });
+  });
+
+  it('still keeps agent reads out of opened', async () => {
+    const token = await tokenFor(owner);
+    await server.request(`/api/artifacts/${doc.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    const summary = (await (await owner.as('/api/views')).json()) as ViewsSummaryResponse;
+    expect(summary.totals).toMatchObject({ opened: 0, neverOpened: 1, views: 0 });
+    expect(summary.artifacts[0]).toMatchObject({ agentFetches: 1 });
   });
 
   it('covers only what the caller owns', async () => {

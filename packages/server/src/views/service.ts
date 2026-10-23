@@ -7,9 +7,11 @@
  *
  * What is counted, and how, is decided here rather than in each route:
  *
- * - A **view** is a person other than the owner opening the document in a
- *   browser. That is the number the owner sees first.
- * - The owner opening their own document is recorded, but as `ownerViews`.
+ * - A **view** is anybody opening the document in a browser, the owner
+ *   included: an author re-reading what an agent produced for them is reading
+ *   it. `ownerViews` and `otherViews` split the count, by you and by others.
+ * - "Opened since the latest version" means anybody, the owner included,
+ *   opened the current version in a browser.
  * - A command-line client (agentio) or a connected assistant reading it is
  *   recorded, but as `agentFetches`. An agent checking its own work is not a
  *   reader.
@@ -83,6 +85,7 @@ interface Aggregate {
   unique_viewers: number;
   anonymous_viewers: number;
   owner_views: number;
+  other_viewers: number;
   agent_fetches: number;
   last_viewed_at: string | null;
   last_viewed_version: number | null;
@@ -179,25 +182,32 @@ export class ViewService {
         coalesce(sum(case when ${HUMAN} then 1 else 0 end), 0) as views,
         count(distinct case when ${HUMAN} then viewer_key end) as unique_viewers,
         count(distinct case when ${HUMAN} and viewer_user_id is null then viewer_key end) as anonymous_viewers,
+        count(distinct case when ${OTHER} then viewer_key end) as other_viewers,
         coalesce(sum(case when ${OWNER} then 1 else 0 end), 0) as owner_views,
         coalesce(sum(case when ${AGENT} then 1 else 0 end), 0) as agent_fetches,
         max(case when ${HUMAN} then viewed_at end) as last_viewed_at,
         (select v.version from artifact_views v
           where v.artifact_id = ${artifact.id} and v.viewed_at >= ${cutoff}
-            and v.client = 'browser' and v.access != 'owner'
+            and v.client = 'browser'
           order by v.viewed_at desc limit 1) as last_viewed_version,
         max(case when ${HUMAN} and version = ${artifact.version} then 1 else 0 end) as opened_latest
       from artifact_views
       where artifact_id = ${artifact.id} and viewed_at >= ${cutoff}
     `);
 
-    // SQLite's documented bare-column rule: with max(), the other columns come
-    // from the row that holds the maximum, so `access` is the latest one used.
+    // The access each reader last came in by is a correlated lookup rather than
+    // a bare column: with both min() and max() in the query, SQLite does not say
+    // which row a bare column comes from.
     const viewers = this.db
       .all<ViewerRow>(sql`
         select
           viewer_key, viewer_user_id, u.email as email, u.display_name as display_name,
-          access, max(viewed_at) as last_viewed_at, min(viewed_at) as first_viewed_at,
+          (select l.access from artifact_views l
+            where l.artifact_id = artifact_views.artifact_id and l.viewer_key = artifact_views.viewer_key
+              and l.client = 'browser' and l.viewed_at >= ${cutoff}
+            order by l.viewed_at desc, l.id desc limit 1) as access,
+          max(case when access = 'owner' then 1 else 0 end) as is_owner,
+          max(viewed_at) as last_viewed_at, min(viewed_at) as first_viewed_at,
           count(*) as views, max(version) as last_version
         from artifact_views
         left join users u on u.id = artifact_views.viewer_user_id
@@ -207,6 +217,7 @@ export class ViewService {
       `)
       .map((row): ArtifactViewer => ({
         viewer: this.viewerOf(row),
+        isOwner: row.is_owner === 1,
         access: row.access as ViewAccessPath,
         views: row.views,
         firstViewedAt: row.first_viewed_at,
@@ -242,6 +253,8 @@ export class ViewService {
         uniqueViewers: aggregate?.unique_viewers ?? 0,
         anonymousViewers: aggregate?.anonymous_viewers ?? 0,
         ownerViews: aggregate?.owner_views ?? 0,
+        otherViews: (aggregate?.views ?? 0) - (aggregate?.owner_views ?? 0),
+        otherViewers: aggregate?.other_viewers ?? 0,
         agentFetches: aggregate?.agent_fetches ?? 0,
       },
       lastViewedAt: aggregate?.last_viewed_at ?? null,
@@ -268,6 +281,7 @@ export class ViewService {
         lastViewedVersion: row.last_viewed_version,
         openedSinceLatestVersion: row.opened_latest === 1,
         ownerViews: row.owner_views,
+        otherViews: row.views - row.owner_views,
         agentFetches: row.agent_fetches,
       }),
     );
@@ -296,6 +310,8 @@ export class ViewService {
           uniqueViewers: row.unique_viewers,
           lastViewedAt: row.last_viewed_at,
           openedSinceLatestVersion: row.opened_latest === 1,
+          ownerViews: row.owner_views,
+          otherViews: row.views - row.owner_views,
         },
       ]),
     );
@@ -318,7 +334,7 @@ export class ViewService {
         max(case when ${HUMAN_V} then v.viewed_at end) as last_viewed_at,
         (select lv.version from artifact_views lv
           where lv.artifact_id = a.id and lv.viewed_at >= ${cutoff}
-            and lv.client = 'browser' and lv.access != 'owner'
+            and lv.client = 'browser'
           order by lv.viewed_at desc limit 1) as last_viewed_version,
         max(case when ${HUMAN_V} and v.version = a.current_version then 1 else 0 end) as opened_latest
       from artifacts a
@@ -363,10 +379,13 @@ export class ViewService {
 }
 
 /** A person other than the owner, in a browser. The only thing counted as reading. */
-const HUMAN = sql.raw(`(client = 'browser' and access != 'owner')`);
+/** A view: anybody in a browser, the owner included. */
+const HUMAN = sql.raw(`(client = 'browser')`);
+/** A view by somebody other than the owner. */
+const OTHER = sql.raw(`(client = 'browser' and access != 'owner')`);
 const OWNER = sql.raw(`(client = 'browser' and access = 'owner')`);
 const AGENT = sql.raw(`(client != 'browser')`);
-const HUMAN_V = sql.raw(`(v.client = 'browser' and v.access != 'owner')`);
+const HUMAN_V = sql.raw(`(v.client = 'browser')`);
 
 interface ViewerRow {
   viewer_key: string;
@@ -374,6 +393,7 @@ interface ViewerRow {
   email: string | null;
   display_name: string | null;
   access: string;
+  is_owner: number;
   last_viewed_at: string;
   first_viewed_at: string;
   views: number;

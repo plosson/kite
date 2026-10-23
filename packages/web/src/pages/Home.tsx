@@ -219,16 +219,15 @@ function Row({
 }
 
 /**
- * How many people opened one of my documents. Only my own carry counts, so a
- * document shared with me shows nothing here. "Unread" means a newer version is
- * out that nobody has opened, which is the case worth a nudge.
+ * How many times one of my documents was opened in a browser, my own opens
+ * included. Only my own documents carry counts, so a document shared with me
+ * shows nothing here. "Unread" means a newer version is out that nobody, me
+ * included, has opened, which is the case worth a nudge.
  */
 function ViewCount({ counts }: { counts: ArtifactViewCounts }) {
-  const label =
-    counts.uniqueViewers === 1 ? '1 person opened this' : `${counts.uniqueViewers} people opened this`;
   const title = counts.lastViewedAt
-    ? `${label}, ${counts.views} ${counts.views === 1 ? 'view' : 'views'}. Last on ${new Date(counts.lastViewedAt).toLocaleString()}.`
-    : 'Nobody other than you has opened it.';
+    ? `${counts.views} ${counts.views === 1 ? 'view' : 'views'}: ${counts.ownerViews} by you, ${counts.otherViews} by others. Last on ${new Date(counts.lastViewedAt).toLocaleString()}.`
+    : 'Nobody has opened it yet.';
   return (
     <span
       className="flex shrink-0 items-center gap-1.5 text-[11.5px] tabular-nums text-ink-3"

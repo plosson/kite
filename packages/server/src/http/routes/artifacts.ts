@@ -237,7 +237,7 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
   });
 }
 
-const NO_VIEWS = { views: 0, uniqueViewers: 0, lastViewedAt: null, openedSinceLatestVersion: false };
+const NO_VIEWS = { views: 0, uniqueViewers: 0, lastViewedAt: null, openedSinceLatestVersion: false, ownerViews: 0, otherViews: 0 };
 
 /** Adds the viewing URL, so no client has to know how to build one. */
 function withUrl<T extends ArtifactSummary | ArtifactDetail>(
