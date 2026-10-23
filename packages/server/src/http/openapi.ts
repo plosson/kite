@@ -375,6 +375,32 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '404': 'No such artifact, it is not yours, or it has no such version',
     },
   },
+  'GET /api/artifacts/:id/canvas': {
+    summary: 'Read a canvas as JSON Canvas 1.0',
+    description:
+      'Only for documents of type `canvas`; anything else gets 400. Anybody who may read the document may read this. The body is the JSON Canvas document itself (`nodes`, `edges`), with Kite extras under `kite` keys and a top-level `kite` object carrying `docId` and `version`, which are added on read and never stored. `format=jsoncanvas-strict` removes every `kite` key, leaving only what JSON Canvas 1.0 defines. The `X-Artifact-Version` header carries the version too; send it back as `baseVersion` to POST /api/artifacts/:id/canvas/ops.',
+    auth: 'optional',
+    responses: {
+      '200': 'The canvas',
+      '400': 'Not a canvas, or an unknown format',
+      '404': 'No such artifact, or you may not read it',
+    },
+  },
+  'POST /api/artifacts/:id/canvas/ops': {
+    summary: 'Change a canvas with a batch of operations',
+    description:
+      'Owner only. Body: `baseVersion` (the version you read), `ops` (up to 500), optional `dryRun`. Operations: `add` {node, tempId?, id?, in?}, `update` {id, set, unset?}, `move` {id, x, y} (a group carries the nodes inside it), `resize` {id, width, height}, `delete` {id} (a node takes its edges with it), `connect` {from, to, tempId?, label?, fromSide?, toSide?}, `disconnect` {id}. Later operations may name an earlier one by its tempId. All or nothing: one bad operation refuses the whole batch with 400 and `details.opIndex`. A batch based on an older version is refused with 409 `version_conflict`; read the canvas again and resend. A successful batch writes exactly one new version and returns `version`, `ids` (tempId → id) and `touched`. Counted against its own hourly limit, not against publishing.',
+    auth: 'required',
+    responses: {
+      '200': 'Applied (or checked, with dryRun)',
+      '400': 'Not a canvas, or an operation is invalid',
+      '401': 'Not signed in',
+      '404': 'No such artifact, or it is not yours',
+      '409': 'The canvas changed since baseVersion',
+      '413': 'The canvas would be larger than 2 MB',
+      '429': 'Too many batches this hour',
+    },
+  },
   'GET /api/views': {
     summary: 'How each of your documents has been read',
     description:

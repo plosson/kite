@@ -6,6 +6,8 @@
  * and a list is how you scan documents.
  */
 
+import type { ArtifactType } from '@open-artifact/shared';
+import { typeLetter } from '../type-letter.js';
 import {
   type ArtifactSummary,
   type ArtifactViewCounts,
@@ -172,7 +174,7 @@ function Row({
   title: string;
   /** One line from its publisher, shown under the title. Null on older documents. */
   description: string | null;
-  type: 'markdown' | 'html';
+  type: ArtifactType;
   updatedAt: string;
   byline?: string;
   trailing?: React.ReactNode;
@@ -193,7 +195,7 @@ function Row({
           aria-hidden="true"
           className="grid size-[18px] shrink-0 place-items-center rounded-[4px] border border-line text-[8px] font-bold uppercase text-ink-3"
         >
-          {type === 'markdown' ? 'M' : 'H'}
+          {typeLetter(type)}
         </span>
 
         <span className="min-w-0 flex-1">

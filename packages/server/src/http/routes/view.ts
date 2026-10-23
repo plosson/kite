@@ -130,6 +130,12 @@ export function registerViewRoutes(app: Hono<AppEnv>, context: AppContext): void
       );
     }
 
+    // A canvas is data, not a page. Served as JSON under the same sandbox, so a
+    // canvas never reaches the HTML path below and is never framed as a page.
+    if (artifact.type === 'canvas') {
+      return c.body(artifact.content, 200, { 'Content-Type': 'application/json; charset=utf-8' });
+    }
+
     // Known gap: HTML artifacts are served byte for byte and are NOT rewritten,
     // so a public HTML artifact can still carry off-site links straight out.
     // Rewriting them would mean parsing and editing the publisher's own document,

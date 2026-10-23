@@ -15,6 +15,7 @@
  */
 
 import type { ArtifactType } from '@open-artifact/shared';
+import { nodeText, parseCanvas } from '@open-artifact/shared';
 
 /**
  * How much of the document to show.
@@ -32,9 +33,39 @@ export function deriveDescription(
   /** The document's title, so the description does not simply repeat it. */
   title: string,
 ): string | null {
-  const prose = type === 'html' ? proseFromHtml(content) : proseFromMarkdown(content);
+  const prose = proseFor(type, content);
   return normalise(prose, title);
 }
+
+/** Exhaustive on purpose: see titleFor in title.ts. */
+function proseFor(type: ArtifactType, content: string): string {
+  switch (type) {
+    case 'html':
+      return proseFromHtml(content);
+    case 'markdown':
+      return proseFromMarkdown(content);
+    case 'canvas':
+      return proseFromCanvas(content);
+    default: {
+      const unknown: never = type;
+      throw new Error(`No description rule for type ${String(unknown)}`);
+    }
+  }
+}
+
+/** The text cards, in the order they were placed, as one run of prose. */
+function proseFromCanvas(content: string): string {
+  try {
+    return parseCanvas(content)
+      .nodes.filter((n) => n.type === 'text')
+      .map((n) => nodeText(n).replace(/[#*_`>]/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join(' ');
+  } catch {
+    return '';
+  }
+}
+
 
 /**
  * The opening prose of a Markdown document.

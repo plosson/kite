@@ -22,7 +22,7 @@
  * public, standalone, with a way to sign in. Both use the same body.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   endpoints,
   ApiError,
@@ -54,6 +54,9 @@ import {
   type BridgeSelection,
 } from '../components/frame-bridge.js';
 import { NotFound } from './NotFound.js';
+
+/** React Flow is its own chunk: Markdown and HTML readers never download it. */
+const CanvasView = lazy(() => import('../canvas/CanvasView.js'));
 import { SidebarButton } from '../components/Sidebar.js';
 import { describeRemaining } from '@open-artifact/shared';
 import { drawDiagrams } from '../diagrams.js';
@@ -589,9 +592,12 @@ function Body({
   onLeaveEditing?: () => void;
   leaveGuard?: { current: (() => boolean) | null };
 }) {
-  return (
-    <div className="oa-scroll min-h-0 flex-1 overflow-y-auto">
-      {artifact.type === 'markdown' ? (
+  // One case per type, and no default: a new type has to decide how it is shown
+  // here, rather than falling into the HTML frame because it is "not Markdown".
+  let body: React.ReactNode;
+  switch (artifact.type) {
+    case 'markdown':
+      body = (
         <RenderedMarkdown
           slug={slug}
           artifactId={artifact.id}
@@ -607,7 +613,10 @@ function Body({
           onLeaveEditing={onLeaveEditing}
           leaveGuard={leaveGuard}
         />
-      ) : (
+      );
+      break;
+    case 'html':
+      body = (
         <div className="flex min-h-full flex-col">
           <FramedHtml
             slug={slug}
@@ -623,9 +632,19 @@ function Body({
           />
           {publishCta && <PublishFooter />}
         </div>
-      )}
-    </div>
-  );
+      );
+      break;
+    case 'canvas':
+      // A canvas pans and zooms itself, so it fills the space instead of scrolling.
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Suspense fallback={<div className="p-6"><Spinner /></div>}>
+            <CanvasView artifactId={artifact.id} editable={isArtifactOwner && !editing} />
+          </Suspense>
+        </div>
+      );
+  }
+  return <div className="oa-scroll min-h-0 flex-1 overflow-y-auto">{body}</div>;
 }
 
 /**

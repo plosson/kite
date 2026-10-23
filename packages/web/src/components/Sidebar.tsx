@@ -10,6 +10,8 @@
  * person, so somebody who prefers it open keeps it open.
  */
 
+import type { ArtifactType } from '@open-artifact/shared';
+import { typeLetter } from '../type-letter.js';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '../router.jsx';
 import { useAccount } from '../App.jsx';
@@ -529,7 +531,7 @@ function ArtifactLink({
   title: string;
   subtitle?: string;
   active: boolean;
-  type: 'markdown' | 'html';
+  type: ArtifactType;
   starred?: boolean;
   /** Left out for a row that has no star control, like a loading placeholder. */
   onToggleStar?: () => void;
@@ -875,13 +877,13 @@ export function Avatar({ email, size = 20 }: { email: string; size?: number }) {
   );
 }
 
-function TypeIcon({ type }: { type: 'markdown' | 'html' }) {
+function TypeIcon({ type }: { type: ArtifactType }) {
   return (
     <span
       aria-hidden="true"
       className="grid size-4 shrink-0 place-items-center rounded-[3px] border border-line text-[7px] font-bold uppercase tracking-tight text-ink-3"
     >
-      {type === 'markdown' ? 'M' : 'H'}
+      {typeLetter(type)}
     </span>
   );
 }

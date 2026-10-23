@@ -40,6 +40,7 @@ import {
   type Anchor,
   type TextAnchor,
 } from './anchors.js';
+import { nodeText, parseCanvas } from '@open-artifact/shared';
 import {
   anchorForElement,
   relocateElement,
@@ -57,7 +58,9 @@ export type CommentPosition =
   /** Markdown: the passage the reader selected. */
   | { headingId?: string | null; snippet: string; occurrence: number }
   /** HTML: the element they selected, and what they had highlighted inside it. */
-  | { elementId?: string | null; path?: string | null; snippet?: string | null };
+  | { elementId?: string | null; path?: string | null; snippet?: string | null }
+  /** Canvas: the node or edge, by id. */
+  | { nodeId: string };
 
 /** The longest a single comment can be. Long enough for a paragraph of thought. */
 export const MAX_COMMENT_LENGTH = 10_000;
@@ -175,11 +178,24 @@ export class CommentService {
   ): Anchor {
     if (!position) return DOCUMENT_ANCHOR;
 
-    // Which half of the position applies is decided by the document, not by what
+    // Which kind of position applies is decided by the document, not by what
     // arrived. An HTML artifact resolves an element against its source; a
-    // Markdown one matches the passage the reader selected.
-    if (artifact.type !== 'markdown') {
-      return this.resolveElementAnchor(artifact.content, position);
+    // Markdown one matches the passage the reader selected; a canvas holds on
+    // to a node. Every type is named: a type that fell through to "not
+    // Markdown, so HTML" would have its JSON parsed as a web page.
+    switch (artifact.type) {
+      case 'html':
+        return this.resolveElementAnchor(artifact.content, position);
+      case 'canvas':
+        return resolveNodeAnchor(artifact.content, position);
+      case 'markdown':
+        break;
+      default:
+        throw new ApiError('validation_failed', `Comments cannot be anchored in a ${artifact.type} document.`);
+    }
+
+    if ('nodeId' in position) {
+      throw new ApiError('validation_failed', 'nodeId is for canvases. A passage of a Markdown document is anchored by its text.');
     }
 
     if (!('snippet' in position) || typeof position.snippet !== 'string') {
@@ -204,6 +220,9 @@ export class CommentService {
   }
 
   private resolveElementAnchor(html: string, position: CommentPosition): ElementAnchor {
+    if ('nodeId' in position) {
+      throw new ApiError('validation_failed', 'nodeId is for canvases. An HTML comment is anchored by elementId or path.');
+    }
     const elementId = 'elementId' in position ? position.elementId : undefined;
     const path = 'path' in position ? position.path : undefined;
 
@@ -424,7 +443,7 @@ export class CommentService {
       .where(
         and(
           eq(commentThreads.artifactId, artifactId),
-          inArray(commentThreads.anchorKind, ['text', 'element']),
+          inArray(commentThreads.anchorKind, ['text', 'element', 'node']),
         ),
       )
       .all();
@@ -472,6 +491,17 @@ export class CommentService {
     newContent: string,
     artifactType: string,
   ): { found: boolean; drifted: boolean; refreshed?: Partial<CommentThreadRow> } {
+    if (thread.anchorKind === 'node') {
+      if (artifactType !== 'canvas') return { found: false, drifted: false };
+      const found = findCanvasItem(newContent, thread.anchorElementId ?? '');
+      if (found === null) return { found: false, drifted: false };
+      // The id held. Words that differ from the ones the comment was written
+      // about are shown as drift, the same way an HTML element whose id held but
+      // whose text changed is. The stored words are not refreshed, so the
+      // reader can still see what the comment was about.
+      return { found: true, drifted: capText(found) !== (thread.anchorElementText ?? '') };
+    }
+
     if (thread.anchorKind === 'text') {
       if (artifactType !== 'markdown') return { found: false, drifted: false };
 
@@ -484,7 +514,7 @@ export class CommentService {
       return { found: relocate(newContent, anchor).found, drifted: false };
     }
 
-    if (artifactType === 'markdown') return { found: false, drifted: false };
+    if (artifactType !== 'html') return { found: false, drifted: false };
 
     const anchor: ElementAnchor = {
       kind: 'element',
@@ -691,7 +721,54 @@ function columnsFor(anchor: Anchor): Pick<
     };
   }
 
+  if (anchor.kind === 'node') {
+    return {
+      ...empty,
+      anchorKind: 'node',
+      anchorSnippet: anchor.snippet,
+      anchorElementId: anchor.nodeId,
+      anchorElementText: anchor.text,
+    };
+  }
+
   return { ...empty, anchorKind: 'document' };
+}
+
+/** Comment anchors on canvases keep this much of a node's words. */
+const NODE_TEXT_CAP = 500;
+
+function capText(text: string): string {
+  return text.length > NODE_TEXT_CAP ? text.slice(0, NODE_TEXT_CAP) : text;
+}
+
+/** A node's words, an edge's label, or null when there is no such id. */
+function findCanvasItem(content: string, id: string): string | null {
+  let doc;
+  try {
+    doc = parseCanvas(content);
+  } catch {
+    return null;
+  }
+  const node = doc.nodes.find((n) => n.id === id);
+  if (node) return nodeText(node);
+  const edge = doc.edges.find((e) => e.id === id);
+  if (edge) return edge.label ?? '';
+  return null;
+}
+
+function resolveNodeAnchor(content: string, position: CommentPosition): Anchor {
+  if (!('nodeId' in position) || typeof position.nodeId !== 'string' || position.nodeId === '') {
+    throw new ApiError(
+      'validation_failed',
+      'A comment on part of a canvas needs the node it is about, as nodeId. Leave the position out entirely for a comment on the whole canvas.',
+    );
+  }
+  const text = findCanvasItem(content, position.nodeId);
+  if (text === null) {
+    throw new ApiError('validation_failed', `There is no node or edge "${position.nodeId}" on this canvas.`);
+  }
+  const capped = capText(text);
+  return { kind: 'node', nodeId: position.nodeId, text: capped, snippet: capped.slice(0, 200) };
 }
 
 /** The anchor a stored row describes. */
@@ -702,6 +779,15 @@ function anchorFrom(row: CommentThreadRow): Anchor {
       headingId: row.anchorHeadingId,
       snippet: row.anchorSnippet ?? '',
       occurrence: row.anchorOccurrence ?? 0,
+    };
+  }
+
+  if (row.anchorKind === 'node') {
+    return {
+      kind: 'node',
+      nodeId: row.anchorElementId ?? '',
+      text: row.anchorElementText ?? '',
+      snippet: row.anchorSnippet ?? '',
     };
   }
 

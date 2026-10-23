@@ -260,6 +260,16 @@ function VersionDocument({ slug, detail }: { slug: string; detail: ArtifactVersi
     return drawDiagrams(element, theme === 'dark');
   }, [html, theme]);
 
+  if (detail.type === 'canvas') {
+    // Not drawn yet: the spike shows the stored JSON, one node per line, which
+    // is also what Changes diffs.
+    return (
+      <pre data-testid="version-document" className="mx-auto w-full max-w-[960px] overflow-x-auto px-6 py-10 text-[12px]">
+        {detail.content}
+      </pre>
+    );
+  }
+
   if (detail.type === 'html') {
     return (
       <iframe

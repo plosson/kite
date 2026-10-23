@@ -133,6 +133,10 @@ function describeAnchor(thread: ThreadView): string {
     return `"${excerpt(thread.anchor.snippet, SNIPPET_CAP)}" (in ${where})`;
   }
 
+  if (thread.anchor.kind === 'node') {
+    return `"${excerpt(thread.anchor.snippet, SNIPPET_CAP)}" (on canvas node ${safeId(thread.anchor.nodeId)})`;
+  }
+
   return 'the whole document';
 }
 

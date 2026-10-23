@@ -16,6 +16,10 @@ import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import type { ArtifactType, TimelineEvent } from '@open-artifact/shared';
 import {
   isArtifactType,
+  CanvasError,
+  CANVAS_LIMITS,
+  parseCanvas,
+  serialiseCanvas,
   ARTIFACT_DESCRIPTION_MAX_LENGTH,
   ARTIFACT_SUMMARY_MAX_LENGTH,
   ARTIFACT_SUMMARY_MAX_LINES,
@@ -169,7 +173,7 @@ export class ArtifactService {
 
   create(input: CreateArtifactInput): ArtifactDetail {
     const type = this.requireType(input.type);
-    const content = this.requireContent(input.content);
+    const content = this.normaliseContent(type, this.requireContent(input.content));
     const explicitTitle = normaliseGivenTitle(input.title);
     const description = requireDescription(input.description);
     const summary = requireSummary(input.summary);
@@ -218,7 +222,16 @@ export class ArtifactService {
   update(id: string, input: UpdateArtifactInput): ArtifactDetail {
     const existing = this.requireRow(id);
     const type = input.type === undefined ? existing.type : this.requireType(input.type);
-    const content = this.requireContent(input.content);
+    // A canvas is a different kind of thing, not a different spelling of the
+    // same text. Turning one into Markdown, or the reverse, would hand every
+    // comment, version and reader a document they cannot make sense of.
+    if (type !== existing.type && (type === 'canvas' || existing.type === 'canvas')) {
+      throw new ApiError(
+        'validation_failed',
+        `A ${existing.type} document cannot become a ${type} one. Publish a new document instead.`,
+      );
+    }
+    const content = this.normaliseContent(type as ArtifactType, this.requireContent(input.content));
     const explicitTitle = normaliseGivenTitle(input.title);
     const description =
       input.description === undefined ? undefined : requireDescription(input.description);
@@ -557,10 +570,58 @@ export class ArtifactService {
     if (!isArtifactType(type)) {
       throw new ApiError(
         'unsupported_type',
-        `Artifacts can be "markdown" or "html". Got "${type}".`,
+        `Artifacts can be "markdown", "html" or "canvas". Got "${type}".`,
       );
     }
     return type;
+  }
+
+  /**
+   * What is stored for this type. Markdown and HTML are kept byte for byte. A
+   * canvas is checked against JSON Canvas 1.0 and Kite's rules, then stored in
+   * one canonical layout (one node per line), so the version history's line
+   * diff shows which nodes changed.
+   */
+  private normaliseContent(type: ArtifactType, content: string): string {
+    switch (type) {
+      case 'markdown':
+      case 'html':
+        return content;
+      case 'canvas': {
+        const bytes = Buffer.byteLength(content, 'utf8');
+        if (bytes > CANVAS_LIMITS.maxBytes) {
+          throw new ApiError(
+            'payload_too_large',
+            `This canvas is ${formatBytes(bytes)}. A canvas can be up to ${formatBytes(CANVAS_LIMITS.maxBytes)}.`,
+            { bytes, maxBytes: CANVAS_LIMITS.maxBytes },
+          );
+        }
+        try {
+          return this.requireCanvasSize(serialiseCanvas(parseCanvas(content)));
+        } catch (error) {
+          if (error instanceof CanvasError) {
+            throw new ApiError('validation_failed', error.message);
+          }
+          throw error;
+        }
+      }
+      default: {
+        const unknown: never = type;
+        throw new ApiError('unsupported_type', `Unknown type ${String(unknown)}.`);
+      }
+    }
+  }
+
+  private requireCanvasSize(content: string): string {
+    const bytes = Buffer.byteLength(content, 'utf8');
+    if (bytes > CANVAS_LIMITS.maxBytes) {
+      throw new ApiError(
+        'payload_too_large',
+        `This canvas would be ${formatBytes(bytes)}. A canvas can be up to ${formatBytes(CANVAS_LIMITS.maxBytes)}.`,
+        { bytes, maxBytes: CANVAS_LIMITS.maxBytes },
+      );
+    }
+    return content;
   }
 
   private requireContent(content: string): string {

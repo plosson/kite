@@ -39,7 +39,7 @@
 
 import { escapeHtml } from '../render/escape.js';
 import { deriveDescription } from '../artifacts/description.js';
-import { isExpired } from '@open-artifact/shared';
+import { isExpired, type ArtifactType } from '@open-artifact/shared';
 import type { ArtifactDetail } from '../artifacts/service.js';
 
 /** What the card should say, once access has been settled. */
@@ -82,7 +82,7 @@ export function previewFor(artifact: ArtifactDetail, now: string): PreviewCopy {
     title: artifact.title,
     // A public document with nothing readable in it — an empty file, a page of
     // images — falls back to saying what it is rather than showing a blank line.
-    description: description ?? `A ${artifact.type === 'html' ? 'page' : 'document'} on Kite.`,
+    description: description ?? `A ${kindWord(artifact.type)} on Kite.`,
   };
 }
 
@@ -129,4 +129,20 @@ function replaceMeta(html: string, attribute: 'name' | 'property', key: string, 
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** What to call a document of this type in a card. Exhaustive: see title.ts. */
+function kindWord(type: ArtifactType): string {
+  switch (type) {
+    case 'html':
+      return 'page';
+    case 'markdown':
+      return 'document';
+    case 'canvas':
+      return 'canvas';
+    default: {
+      const unknown: never = type;
+      return String(unknown);
+    }
+  }
 }

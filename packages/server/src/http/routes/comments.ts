@@ -114,10 +114,14 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     const artifact = artifactFor(c.req.param('id'), 'comment', c);
     const body = await readJson(c.req.raw);
 
-    if (artifact.type === 'markdown') {
+    // Only HTML has elements to preview. Named one by one, so a new type is
+    // refused here rather than having its content parsed as a web page.
+    if (artifact.type !== 'html') {
       throw new ApiError(
         'validation_failed',
-        'Element anchors are for HTML artifacts. A passage of a Markdown document is anchored by its text.',
+        artifact.type === 'canvas'
+          ? 'Element anchors are for HTML artifacts. A comment on a canvas is anchored by nodeId.'
+          : 'Element anchors are for HTML artifacts. A passage of a Markdown document is anchored by its text.',
       );
     }
 
@@ -290,6 +294,13 @@ function readPosition(body: Record<string, unknown>): CommentPosition | undefine
   }
 
   const value = position as Record<string, unknown>;
+
+  if ('nodeId' in value) {
+    if (typeof value.nodeId !== 'string' || value.nodeId === '') {
+      throw new ApiError('validation_failed', 'position.nodeId must be the id of a node on the canvas.');
+    }
+    return { nodeId: value.nodeId };
+  }
 
   if ('elementId' in value || 'path' in value) {
     return readElementPosition(value);
