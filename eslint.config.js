@@ -19,7 +19,8 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // Leaving a field out by destructuring it beside a rest element is fine.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', ignoreRestSiblings: true }],
       '@typescript-eslint/consistent-type-imports': 'error',
     },
   },

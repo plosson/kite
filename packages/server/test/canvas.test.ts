@@ -7,6 +7,7 @@ import {
   type SignedInUser,
   type TestServer,
 } from './helpers/server.js';
+import type { CanvasDocument, CanvasOutline, CommentThread } from '@open-artifact/shared';
 
 let server: TestServer;
 let owner: SignedInUser;
@@ -41,16 +42,28 @@ const share = (artifact: PublishedArtifact) =>
     jsonBody({ email: 'colleague@example.com' }),
   );
 
+/** What GET /canvas answers: the document, with Kite's own block filled in. */
+type CanvasRead = Omit<CanvasDocument, 'kite'> & {
+  kite: { docId: string; version: number; formatVersion: number };
+};
+/** What a batch of operations answers. */
+interface OpsResult {
+  version: number;
+  applied: number;
+  ids: Record<string, string>;
+}
+type OutlineRead = CanvasOutline & { docId: string; version: number };
+
 const ops = (as: SignedInUser, artifact: PublishedArtifact, body: unknown) =>
   as.as(`/api/artifacts/${artifact.id}/canvas/ops`, jsonBody(body));
 
 async function readCanvas(as: SignedInUser, artifact: PublishedArtifact, query = '') {
   const response = await as.as(`/api/artifacts/${artifact.id}/canvas${query}`);
-  return { response, body: (await response.json()) as Record<string, any> };
+  return { response, body: (await response.json()) as CanvasRead };
 }
 
 async function error(response: Response) {
-  return ((await response.json()) as { error: { code: string; message: string; details?: any } })
+  return ((await response.json()) as { error: { code: string; message: string; details?: unknown } })
     .error;
 }
 
@@ -177,14 +190,14 @@ describe('changing a canvas with operations', () => {
       ],
     });
     expect(response.status).toBe(200);
-    const result = (await response.json()) as Record<string, any>;
+    const result = (await response.json()) as OpsResult;
     expect(result.version).toBe(2);
     expect(result.applied).toBe(4);
     expect(result.ids.t1).toMatch(/^n_/);
 
     const { body } = await readCanvas(owner, artifact);
     const added = body.nodes.find((n: { id: string }) => n.id === result.ids.t1);
-    expect(added.text).toBe('Write tests');
+    expect(added).toMatchObject({ text: 'Write tests' });
     expect(body.edges).toHaveLength(2);
     expect(body.nodes.find((n: { id: string }) => n.id === 'n1')).toMatchObject({ x: 40, y: 60 });
 
@@ -302,7 +315,7 @@ describe('commenting on a canvas node', () => {
     );
   const threads = async (artifact: PublishedArtifact) => {
     const response = await owner.as(`/api/artifacts/${artifact.id}/comments`);
-    return ((await response.json()) as { threads: Record<string, any>[] }).threads;
+    return ((await response.json()) as { threads: CommentThread[] }).threads;
   };
 
   it('anchors to the node and remembers its text', async () => {
@@ -310,7 +323,7 @@ describe('commenting on a canvas node', () => {
     await share(artifact);
     const response = await comment(artifact, { nodeId: 'n1' });
     expect(response.status).toBe(201);
-    const thread = (await response.json()) as Record<string, any>;
+    const thread = (await response.json()) as CommentThread;
     expect(thread.anchor).toMatchObject({ kind: 'node', nodeId: 'n1', text: 'Ship the canvas spike' });
   });
 
@@ -363,18 +376,18 @@ describe('the canvas outline', () => {
     const response = await owner.as(`/api/artifacts/${artifact.id}/canvas/outline`);
     expect(response.status).toBe(200);
     expect(response.headers.get('x-artifact-version')).toBe('1');
-    const body = (await response.json()) as any;
+    const body = (await response.json()) as OutlineRead;
     expect(body).toMatchObject({ docId: artifact.id, version: 1, counts: { nodes: 4, edges: 1, groups: 1 } });
-    expect(body.tree.map((n: any) => n.id)).toEqual(['g1', 'l1']);
-    expect(body.tree[0].children.map((n: any) => n.summary)).toEqual(['Ship the canvas spike', 'Measure React Flow']);
+    expect(body.tree.map((n) => n.id)).toEqual(['g1', 'l1']);
+    expect(body.tree[0]?.children?.map((n) => n.summary)).toEqual(['Ship the canvas spike', 'Measure React Flow']);
     expect(body.freeSlot.x).toBeGreaterThan(1000);
   });
 
   it('narrows to a frame, and refuses an unknown one or a bad depth', async () => {
     const artifact = await publishBoard();
-    const one = (await (await owner.as(`/api/artifacts/${artifact.id}/canvas/outline?frame=g1&depth=1`)).json()) as any;
+    const one = (await (await owner.as(`/api/artifacts/${artifact.id}/canvas/outline?frame=g1&depth=1`)).json()) as OutlineRead;
     expect(one.tree).toHaveLength(1);
-    expect(one.tree[0].summary).toBe('Launch plan (2 inside)');
+    expect(one.tree[0]?.summary).toBe('Launch plan (2 inside)');
     expect((await owner.as(`/api/artifacts/${artifact.id}/canvas/outline?frame=n1`)).status).toBe(400);
     expect((await owner.as(`/api/artifacts/${artifact.id}/canvas/outline?depth=0`)).status).toBe(400);
   });
@@ -395,9 +408,9 @@ describe('placing and editing through operations', () => {
       ops: [{ op: 'add', tempId: 't', near: 'l1', side: 'bottom', node: { text: 'Under the link' } }],
     });
     expect(response.status).toBe(200);
-    const id = ((await response.json()) as any).ids.t;
+    const id = ((await response.json()) as OpsResult).ids.t;
     const { body } = await readCanvas(owner, artifact);
-    const node = body.nodes.find((n: any) => n.id === id);
+    const node = body.nodes.find((n) => n.id === id);
     expect(node).toMatchObject({ x: 700, y: 120 });
   });
 
