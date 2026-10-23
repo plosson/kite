@@ -352,6 +352,29 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '404': 'No such artifact, or it is not yours',
     },
   },
+  'GET /api/artifacts/:id/versions': {
+    summary: 'Every version of one of your documents',
+    description:
+      'Owner only; anybody else, including people it is shared with, gets 404, because a past version may hold what you removed on purpose. A Bearer token acts as its owner. Newest version first, never with content: `version`, `createdAt`, `kind` (`published` for version 1, `edited` after), `type`, the `title` it had then, `bytes` (UTF-8 size of the content), `isCurrent`, and `views` — browser opens of that version in the last `retentionDays`, split into `ownerViews` and `otherViews` like GET /api/artifacts/:id/views. `publishedBy` is the owner: only the owner can publish or edit, and which client wrote each version is not recorded.',
+    auth: 'required',
+    responses: {
+      '200': 'The versions, newest first',
+      '401': 'Not signed in',
+      '404': 'No such artifact, or it is not yours',
+    },
+  },
+  'GET /api/artifacts/:id/versions/:version': {
+    summary: 'Read one version of one of your documents, with its content',
+    description:
+      'Owner only, like GET /api/artifacts/:id/versions. The same shape as GET /api/artifacts/:id, with `version`, `type`, `title` and `content` as they were at that version and `updatedAt` the moment it was written; `currentVersion` and `isCurrent` say where it stands. The description and summary are not versioned, so they are the current ones. Reading a version is recorded against that version: in a browser as a view (yours), with a Bearer token as an agent read. Pass `record=false` to fetch a version only to compare against it, without recording a read.',
+    auth: 'required',
+    responses: {
+      '200': 'That version',
+      '400': 'version is not a whole number from 1 up',
+      '401': 'Not signed in',
+      '404': 'No such artifact, it is not yours, or it has no such version',
+    },
+  },
   'GET /api/views': {
     summary: 'How each of your documents has been read',
     description:
@@ -726,7 +749,7 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'GET /a/:slug/content': {
     summary: 'The artifact’s own bytes, for the sandboxed frame',
     description:
-      'Carries its own Content-Security-Policy sandbox directive, so opening this URL directly in a tab is no more powerful than the frame. Opened directly in a tab (Sec-Fetch-Dest: document), it counts as opening the document.',
+      'Carries its own Content-Security-Policy sandbox directive, so opening this URL directly in a tab is no more powerful than the frame. Opened directly in a tab (Sec-Fetch-Dest: document), it counts as opening the document. Optional `version`: a past version, owner only (anybody else gets 404), served under the same sandbox and never with the comment bridge.',
     auth: 'optional',
     responses: { '200': 'The content', '404': 'No such artifact, or you cannot see it' },
   },

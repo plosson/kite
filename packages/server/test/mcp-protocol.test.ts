@@ -82,7 +82,7 @@ describe('the handshake', () => {
     expect((body?.result as { protocolVersion: string }).protocolVersion).toBe('2025-03-26');
   });
 
-  it('lists exactly the fourteen tools, and only those', async () => {
+  it('lists exactly the sixteen tools, and only those', async () => {
     const { body } = await rpc(token, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
     const names = ((body?.result as { tools: { name: string }[] }).tools).map((tool) => tool.name);
 
@@ -101,6 +101,8 @@ describe('the handshake', () => {
       'get_library_document',
       'describe_artifact',
       'move_artifact',
+      'list_artifact_versions',
+      'get_artifact_version',
     ]);
   });
 });

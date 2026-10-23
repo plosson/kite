@@ -22,7 +22,7 @@ const byName = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
 describe('every tool is annotated', () => {
   it('carries all five flags and a title', () => {
-    expect(TOOLS).toHaveLength(14);
+    expect(TOOLS).toHaveLength(16);
     for (const tool of TOOLS) {
       expect(tool.title, `${tool.name} has no title`).toBeTruthy();
       expect(tool.annotations.title).toBe(tool.title);
@@ -56,8 +56,15 @@ describe('every tool is annotated', () => {
 });
 
 describe('what the flags claim, tool by tool', () => {
-  it('marks the four readers read-only', () => {
-    for (const name of ['get_artifact', 'list_artifacts', 'list_comments', 'list_workspaces']) {
+  it('marks the six readers read-only', () => {
+    for (const name of [
+      'get_artifact',
+      'list_artifacts',
+      'list_comments',
+      'list_workspaces',
+      'list_artifact_versions',
+      'get_artifact_version',
+    ]) {
       expect(byName.get(name)?.annotations.readOnlyHint, name).toBe(true);
     }
   });

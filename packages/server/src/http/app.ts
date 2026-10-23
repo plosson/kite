@@ -16,6 +16,7 @@ import { type Logger, silentLogger } from '../logging.js';
 import { registerArtifactRoutes } from './routes/artifacts.js';
 import { registerWorkspaceRoutes } from './routes/workspaces.js';
 import { registerViewsRoutes } from './routes/views.js';
+import { registerVersionRoutes } from './routes/versions.js';
 import { registerViewRoutes } from './routes/view.js';
 import { registerLeavingRoutes } from './routes/leaving.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -185,6 +186,7 @@ export function createApp({
   registerArtifactRoutes(app, context);
   registerWorkspaceRoutes(app, context);
   registerViewsRoutes(app, context);
+  registerVersionRoutes(app, context);
   registerSharingRoutes(app, context);
   registerCommentRoutes(app, context);
   registerNotificationRoutes(app, context);

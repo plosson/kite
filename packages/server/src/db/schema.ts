@@ -481,9 +481,10 @@ export const artifactDomainShares = sqliteTable(
 );
 
 /**
- * Every state an artifact has ever been in. Kept internally so an accidental
- * overwrite is recoverable and so comment anchors can be re-matched against the
- * previous content. Not exposed in the UI or the skill by design.
+ * Every state an artifact has ever been in. Kept so an accidental overwrite is
+ * recoverable and so comment anchors can be re-matched against the previous
+ * content. The owner can list and read them (GET /api/artifacts/:id/versions);
+ * nobody else ever can, because a past version may hold what the owner removed.
  */
 export const artifactVersions = sqliteTable(
   'artifact_versions',

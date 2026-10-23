@@ -364,6 +364,81 @@ const listArtifacts: McpTool = {
   },
 };
 
+const listArtifactVersions: McpTool = {
+  name: 'list_artifact_versions',
+  annotations: {
+    title: 'List versions of a document',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  description:
+    'List every version of an artifact this connection published, newest first: version number, ' +
+    'when it was written, its title then, its size and how often it was opened in a browser. ' +
+    'Read one with get_artifact_version.',
+  inputSchema: {
+    type: 'object',
+    properties: { artifact_id: { type: 'string' } },
+    required: ['artifact_id'],
+  },
+  run(args, ctx) {
+    const artifact = requireConnectionArtifact(ctx, requireArgString(args, 'artifact_id'));
+    const perVersion = ctx.views?.perVersion(artifact.id) ?? new Map();
+    const lines = ctx.artifacts.listVersions(artifact.id).map((version) => {
+      const views = perVersion.get(version.version)?.views ?? 0;
+      return (
+        `v${version.version}${version.isCurrent ? ' (current)' : ''} — ${version.kind} ${version.createdAt}\n` +
+        `  title: ${version.title}\n` +
+        `  format: ${version.type}, ${version.bytes} bytes, ${views} ${views === 1 ? 'view' : 'views'}`
+      );
+    });
+    return textResult(`${artifact.title} — ${lines.length} ${lines.length === 1 ? 'version' : 'versions'}\n\n${lines.join('\n')}`);
+  },
+};
+
+const getArtifactVersion: McpTool = {
+  name: 'get_artifact_version',
+  annotations: {
+    title: 'Read a past version of a document',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  description:
+    'Read one version of an artifact this connection published, with its content as it was then. ' +
+    'Use list_artifact_versions to see which versions exist. To change the document, update the ' +
+    'current version with update_artifact; an old version cannot be edited.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      artifact_id: { type: 'string' },
+      version: { type: 'integer', description: 'The version number, from 1.' },
+      include_content: { type: 'boolean', description: 'Defaults to true.' },
+    },
+    required: ['artifact_id', 'version'],
+  },
+  run(args, ctx) {
+    const artifact = requireConnectionArtifact(ctx, requireArgString(args, 'artifact_id'));
+    const version = requireArgInteger(args, 'version');
+    const includeContent = optionalArgBoolean(args, 'include_content') ?? true;
+    const past = ctx.artifacts.getVersion(artifact.id, version);
+    ctx.views?.recordSafely(
+      { artifact: { id: artifact.id, version }, principal: ctx.user, access: 'owner', client: 'mcp', address: '', userAgent: '' },
+      undefined,
+    );
+
+    const head =
+      `title: ${past.title}\n` +
+      `format: ${past.type}\n` +
+      `version: ${past.version} of ${past.currentVersion}${past.isCurrent ? ' (current)' : ''}\n` +
+      `written: ${past.updatedAt}\n` +
+      `link: ${urlFor(ctx, artifact.slug)}`;
+    return textResult(includeContent ? `${head}\n\n${past.content}` : head);
+  },
+};
+
 const listWorkspaces: McpTool = {
   name: 'list_workspaces',
   annotations: {
@@ -839,6 +914,8 @@ const TOOLS: readonly McpTool[] = [
   getLibraryDocument,
   describeArtifact,
   moveArtifact,
+  listArtifactVersions,
+  getArtifactVersion,
 ];
 
 const BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));

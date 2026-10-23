@@ -31,6 +31,7 @@ import { renderMarkdown } from '../../render/markdown.js';
 import { requireAccess, canAccess } from '../../artifacts/access.js';
 import { BRIDGE_SCRIPT } from '../../comments/bridge.js';
 import { recordView } from './views.js';
+import { versionNumber } from './versions.js';
 
 /**
  * What artifact content is allowed to do.
@@ -64,9 +65,25 @@ export function registerViewRoutes(app: Hono<AppEnv>, context: AppContext): void
    * sandboxed frame; Markdown is fetched from here already rendered.
    */
   app.get('/a/:slug/content', (c) => {
-    const artifact = artifacts.getBySlug(c.req.param('slug'));
-    const facts = sharing.accessFactsFor(artifact);
+    const current = artifacts.getBySlug(c.req.param('slug'));
+    const facts = sharing.accessFactsFor(current);
     requireAccess(c.get('user') ?? null, facts, 'view');
+
+    // A past version, for the owner's history view. Past versions are the
+    // owner's alone (see routes/versions.ts), so asking for one needs 'manage'.
+    // It is served under exactly the same headers as the current one: an old
+    // HTML version is still the publisher's script, and still sandboxed.
+    const requested = c.req.query('version');
+    let artifact = current;
+    let pastVersion = false;
+    if (requested !== undefined) {
+      const version = versionNumber(requested);
+      if (version !== current.version) {
+        requireAccess(c.get('user') ?? null, facts, 'manage');
+        artifact = artifacts.getVersion(current.id, version);
+        pastVersion = true;
+      }
+    }
 
     // Somebody pasted this address straight into a tab, so the app's own page
     // never loaded and never counted the open. The app's own frame and fetch
@@ -126,7 +143,8 @@ export function registerViewRoutes(app: Hono<AppEnv>, context: AppContext): void
     // which is what keeps "we do not modify HTML" true everywhere it is checked.
     const mayComment = canAccess(c.get('user') ?? null, sharing.accessFactsFor(artifact), 'comment');
 
-    if (c.req.query('frame') === '1' && mayComment) {
+    // Comments belong to the current version, so a past one never carries the bridge.
+    if (c.req.query('frame') === '1' && mayComment && !pastVersion) {
       // Appended, never inserted. Appending cannot move the doctype, cannot drop
       // the page into quirks mode, and cannot disturb a byte the publisher wrote.
       // A page whose last bytes sit inside an unterminated script or comment
