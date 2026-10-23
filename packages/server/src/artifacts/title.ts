@@ -8,13 +8,42 @@
  */
 
 import type { ArtifactType } from '@open-artifact/shared';
+import { canvasTitle, parseCanvas } from '@open-artifact/shared';
 
 export const MAX_TITLE_LENGTH = 200;
 export const FALLBACK_TITLE = 'Untitled artifact';
 
 export function deriveTitle(type: ArtifactType, content: string): string {
-  const raw = type === 'html' ? titleFromHtml(content) : titleFromMarkdown(content);
+  const raw = titleFor(type, content);
   return normaliseTitle(raw);
+}
+
+/**
+ * Every type is named here on purpose. A new type that fell through to the
+ * Markdown reader would get a title made of JSON, so the switch is exhaustive
+ * and the compiler says when a type is missing.
+ */
+function titleFor(type: ArtifactType, content: string): string | null {
+  switch (type) {
+    case 'html':
+      return titleFromHtml(content);
+    case 'markdown':
+      return titleFromMarkdown(content);
+    case 'canvas':
+      return titleFromCanvas(content);
+    default: {
+      const unknown: never = type;
+      throw new Error(`No title rule for type ${String(unknown)}`);
+    }
+  }
+}
+
+function titleFromCanvas(content: string): string | null {
+  try {
+    return canvasTitle(parseCanvas(content));
+  } catch {
+    return null;
+  }
 }
 
 function titleFromHtml(content: string): string | null {

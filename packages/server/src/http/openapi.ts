@@ -315,7 +315,7 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'POST /api/artifacts': {
     summary: 'Publish an artifact',
     description:
-      'Markdown or HTML. The artifact belongs to whoever published it. Optional `workspaceId` (a workspace id or name, or "inbox") places it in one of your workspaces; an unknown one refuses the publish. ' +
+      'Markdown, HTML or a canvas (`type: "canvas"`, content a JSON Canvas 1.0 document). The artifact belongs to whoever published it. Optional `workspaceId` (a workspace id or name, or "inbox") places it in one of your workspaces; an unknown one refuses the publish. ' +
       `Required \`description\`: ${ARTIFACT_DESCRIPTION_GUIDANCE} Required \`summary\`: ${ARTIFACT_SUMMARY_GUIDANCE}`,
     auth: 'required',
     responses: {
@@ -373,6 +373,55 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '400': 'version is not a whole number from 1 up',
       '401': 'Not signed in',
       '404': 'No such artifact, it is not yours, or it has no such version',
+    },
+  },
+  'GET /api/artifacts/:id/canvas': {
+    summary: 'Read a canvas as JSON Canvas 1.0',
+    description:
+      'Only for documents of type `canvas`; anything else gets 400. Anybody who may read the document may read this. The body is the JSON Canvas document itself (`nodes`, `edges`), with Kite extras under `kite` keys and a top-level `kite` object carrying `docId` and `version`, which are added on read and never stored. `format=jsoncanvas-strict` removes every `kite` key, leaving only what JSON Canvas 1.0 defines. The `X-Artifact-Version` header carries the version too; send it back as `baseVersion` to POST /api/artifacts/:id/canvas/ops.',
+    auth: 'optional',
+    responses: {
+      '200': 'The canvas',
+      '400': 'Not a canvas, or an unknown format',
+      '404': 'No such artifact, or you may not read it',
+    },
+  },
+  'GET /api/artifacts/:id/canvas/outline': {
+    summary: 'A short map of a canvas',
+    description:
+      'Anybody who may read the canvas may read this. Returns `docId`, `version`, `counts`, `bounds`, `tree` (groups nested by geometry, each node one `summary` line with its box) and `freeSlot` (a clear spot right of the content). `frame=<group id>` limits it to one group; `depth=N` stops nesting after N levels.',
+    auth: 'optional',
+    responses: {
+      '200': 'The outline',
+      '400': 'Not a canvas, an unknown frame, or a bad depth',
+      '404': 'Not found, or not yours to read',
+    },
+  },
+  'POST /api/artifacts/:id/canvas/ops': {
+    summary: 'Change a canvas with a batch of operations',
+    description:
+      'Owner only. Body: `baseVersion` (the version you read), `ops` (up to 500), optional `dryRun`. Operations: `add` {node, tempId?, id?, in?, near?, side?} (with no x/y: `in` drops it into a group, `near` puts it beside a node on `side` (default right), and with neither it lands beside the most recently changed node, always clear of other nodes), `update` {id, set, unset?} (on an edge: label, color, fromSide, toSide), `move` {id, x, y} (a group carries the nodes inside it), `resize` {id, width, height}, `delete` {id} (a node takes its edges with it), `connect` {from, to, tempId?, label?, fromSide?, toSide?}, `disconnect` {id}. Later operations may name an earlier one by its tempId. All or nothing: one bad operation refuses the whole batch with 400 and `details.opIndex`. A batch based on an older version is refused with 409 `version_conflict`; read the canvas again and resend. A successful batch writes exactly one new version and returns `version`, `ids` (tempId → id) and `touched`. Counted against its own hourly limit, not against publishing.',
+    auth: 'required',
+    responses: {
+      '200': 'Applied (or checked, with dryRun)',
+      '400': 'Not a canvas, or an operation is invalid',
+      '401': 'Not signed in',
+      '404': 'No such artifact, or it is not yours',
+      '409': 'The canvas changed since baseVersion',
+      '413': 'The canvas would be larger than 2 MB',
+      '429': 'Too many batches this hour',
+    },
+  },
+  'GET /api/events': {
+    summary: 'Hear about your notifications, and changes to a document, as they happen',
+    description:
+      'A stream of server-sent events (`text/event-stream`) that stays open: one per browser tab. It carries your notifications whenever you are signed in, and one document\'s changes when you name it with `?artifact=<id>` or `?slug=<slug>` (not both). Without a document it needs you signed in. Events never carry content; fetch what changed through the ordinary routes. `ready` {version?, unread?} comes first on every connection, so a reconnecting client can catch up: `version` when the document is followed, `unread` when you are signed in. `change` {kind, version?, via, self} follows each write to the document: `kind` is `content` (a new version: publish, update, canvas operations, restore), `details` (title, description or summary) or `comments`; `via` is `browser` or `agent`. `notifications` {unread, self} follows anything that changes your bell or the access requests waiting on you. `self` is true when the change was made by the tab that sent the same `X-Kite-Client` header here and on its write. Following the document is checked like reading it, at the start and again on every change and every heartbeat, against the current sharing and the current state of your session or token: when you cannot read it (never could, a share removed, signed out, the link expired, deleted) `gone` {reason: deleted | expired | no-access} says so and the document is no longer followed; "no such document" and "not yours" are the same answer. `signed-out` says your session or token stopped working and your notifications are no longer followed. The stream ends when nothing is left to follow. `replaced` comes last when you opened more streams than this instance allows one person (`MAX_LIVE_STREAMS_PER_USER`): your oldest is closed to make room, and should not reconnect by itself. A `: ping` comment every 25 seconds keeps idle connections open through proxies. Optional `X-Kite-Client` header: 8 to 64 letters, digits, `-` or `_`.',
+    auth: 'optional',
+    responses: {
+      '200': 'The stream',
+      '400': 'A malformed client id, or both artifact and slug',
+      '401': 'Not signed in, and no document named',
+      '429': 'Too many streams on this document, or on this instance; see Retry-After',
     },
   },
   'GET /api/views': {

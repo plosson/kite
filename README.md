@@ -59,6 +59,28 @@ Two things to know before you go live:
 
 **Put a reverse proxy in front of it.** The container binds to localhost only,
 on purpose. Terminate TLS with Caddy, nginx or Traefik and forward to it.
+Every open tab follows its notifications and its open document over one
+long-lived stream (`/api/events`, server-sent events with a heartbeat every 25
+seconds). Caddy and Traefik pass it through as it is; nginx does too, because
+the response says `X-Accel-Buffering: no`. Keep the proxy's read timeout above
+a minute. A browser keeps at most six connections to a server over HTTP/1.1,
+across all its tabs, so a proxy that speaks HTTP/2 to browsers lets somebody
+keep more than a handful of tabs open. Changes are announced inside the one
+server process, which is what the single SQLite file already asks for: run one
+instance, not several.
+
+How many of these streams may be open is limited, three ways:
+
+| Variable | Default | Over the limit |
+| --- | --- | --- |
+| `MAX_LIVE_STREAMS_PER_USER` | 20 | That person's oldest stream is closed to make room. |
+| `MAX_LIVE_STREAMS_PER_ARTIFACT` | 250 | The new stream is refused (429, retried later). |
+| `MAX_LIVE_STREAMS` | 2000 | The new stream is refused (429, retried later). |
+
+A person over their own limit loses only their own oldest tab, which waits
+until it is looked at again. The other two refuse rather than close, because
+closing would let one reader of a public document push every other reader
+off.
 
 **You need a mail server.** Sign-in codes and share notifications go out over
 SMTP. Amazon SES, Postmark, Fastmail, your own — anything that speaks SMTP.

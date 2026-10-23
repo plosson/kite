@@ -12,12 +12,19 @@
  * diff against, and says so (`record: false`), so comparing is never counted
  * as having read the older one.
  *
- * Nothing here edits. Restoring a version is a new publish, and is left to the
- * owner's agent: read the version, publish it again.
+ * Restoring is a new version, never a rewrite of history. For a canvas it is
+ * done here: the ops that turn the current canvas back into the old one, sent
+ * as one batch. Other formats leave it to the owner's agent: read the version,
+ * publish it again.
+ *
+ * A canvas version is drawn as a canvas, read-only, and its Changes are drawn
+ * on it too: added, changed, and removed (as ghosts), with a list beside it.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  api,
+  ApiError,
   endpoints,
   type ArtifactVersionDetail,
   type ArtifactVersionsResponse,
@@ -27,6 +34,10 @@ import { Badge, Button, Dialog, RelativeTime, Spinner } from './primitives.js';
 import { diffLines, foldUnchanged, type DiffRow } from '../diff.js';
 import { drawDiagrams } from '../diagrams.js';
 import { useTheme } from '../theme.jsx';
+import { canvasChangesView, parseCanvasContent, restoreOps, type CanvasChangeRow } from '../canvas/history.js';
+import type { CanvasDocument } from '@open-artifact/shared';
+
+const CanvasView = lazy(() => import('../canvas/CanvasView.js'));
 
 export function HistoryDialog({
   artifactId,
@@ -206,6 +217,9 @@ export function PastVersion({
           <Button size="sm" tone="ghost" onClick={onOpenHistory}>
             All versions
           </Button>
+          {detail && detail.type === 'canvas' && !detail.isCurrent && (
+            <RestoreCanvas artifactId={artifactId} detail={detail} onRestored={onBack} />
+          )}
           <Button size="sm" tone="primary" onClick={onBack}>
             Back to latest
           </Button>
@@ -236,6 +250,7 @@ function VersionDocument({ slug, detail }: { slug: string; detail: ArtifactVersi
   const [html, setHtml] = useState<string | null>(null);
   const article = useRef<HTMLElement>(null);
   const { theme } = useTheme();
+  const canvasDoc = useMemo(() => (detail.type === 'canvas' ? parseCanvasContent(detail.content) : null), [detail.type, detail.content]);
 
   useEffect(() => {
     if (detail.type !== 'markdown') return;
@@ -259,6 +274,10 @@ function VersionDocument({ slug, detail }: { slug: string; detail: ArtifactVersi
     if (!element || html === null) return;
     return drawDiagrams(element, theme === 'dark');
   }, [html, theme]);
+
+  if (detail.type === 'canvas') {
+    return <FixedCanvas key={detail.version} artifactId={detail.id} doc={canvasDoc!} testId="version-document" />;
+  }
 
   if (detail.type === 'html') {
     return (
@@ -331,6 +350,10 @@ function VersionChanges({ artifactId, detail }: { artifactId: string; detail: Ar
     );
   }
 
+  if (detail.type === 'canvas' && (previous === 'none' || previous?.type === 'canvas')) {
+    return <CanvasChanges detail={detail} previous={previous === 'none' ? null : previous} />;
+  }
+
   const titleChanged = previous !== 'none' && previous !== null && previous.title !== detail.title;
   const typeChanged = previous !== 'none' && previous !== null && previous.type !== detail.type;
 
@@ -395,5 +418,135 @@ function DiffTable({ rows }: { rows: DiffRow[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** A canvas as it was: no toolbar, no saving, not following live changes. */
+function FixedCanvas({
+  artifactId,
+  doc,
+  marks,
+  testId,
+}: {
+  artifactId: string;
+  doc: CanvasDocument;
+  marks?: Record<string, 'added' | 'removed' | 'changed'>;
+  testId: string;
+}) {
+  return (
+    <div className="flex min-h-[480px] flex-1" data-testid={testId}>
+      <Suspense
+        fallback={
+          <p className="mx-auto flex items-center gap-2 px-6 py-10 text-[13px] text-ink-3">
+            <Spinner /> Loading
+          </p>
+        }
+      >
+        <CanvasView artifactId={artifactId} editable={false} fixed={doc} marks={marks} />
+      </Suspense>
+    </div>
+  );
+}
+
+const KIND_LABEL = { added: 'Added', removed: 'Removed', changed: 'Changed' } as const;
+
+/** What a canvas version changed: drawn on the canvas, and listed. */
+function CanvasChanges({ detail, previous }: { detail: ArtifactVersionDetail; previous: ArtifactVersionDetail | null }) {
+  const view = useMemo(
+    () => canvasChangesView(previous ? parseCanvasContent(previous.content) : { nodes: [], edges: [] }, parseCanvasContent(detail.content)),
+    [previous, detail.content],
+  );
+  const { counts } = view;
+  const parts = [
+    counts.added && `${counts.added} added`,
+    counts.removed && `${counts.removed} removed`,
+    counts.moved && `${counts.moved} moved`,
+    counts.resized && `${counts.resized} resized`,
+    counts.edited && `${counts.edited} edited`,
+    counts.edgesAdded && `${counts.edgesAdded} ${counts.edgesAdded === 1 ? 'edge' : 'edges'} added`,
+    counts.edgesRemoved && `${counts.edgesRemoved} ${counts.edgesRemoved === 1 ? 'edge' : 'edges'} removed`,
+    counts.edgesChanged && `${counts.edgesChanged} ${counts.edgesChanged === 1 ? 'edge' : 'edges'} changed`,
+  ].filter(Boolean);
+  return (
+    <div className="flex min-h-0 flex-1 max-md:flex-col" data-testid="version-changes">
+      <FixedCanvas key={detail.version} artifactId={detail.id} doc={view.doc} marks={view.marks} testId="version-changes-canvas" />
+      <aside className="oa-scroll w-[300px] shrink-0 overflow-y-auto border-l border-line px-4 py-4 text-[12.5px] max-md:w-full max-md:border-l-0 max-md:border-t">
+        <p className="mb-3 text-ink-2" data-testid="version-changes-summary">
+          {previous ? <>From version {previous.version} to {detail.version}: </> : <>Version 1 is the first one: </>}
+          {parts.length ? parts.join(', ') : 'nothing on the canvas changed'}.
+          {previous && previous.title !== detail.title && <> Title was “{previous.title}”.</>}
+        </p>
+        <ul className="flex flex-col gap-1.5" data-testid="version-changes-list">
+          {view.rows.map((row) => (
+            <ChangeRow key={`${row.what}:${row.id}:${row.kind}`} row={row} />
+          ))}
+        </ul>
+      </aside>
+    </div>
+  );
+}
+
+function ChangeRow({ row }: { row: CanvasChangeRow }) {
+  const tone = row.kind === 'added' ? 'text-positive' : row.kind === 'removed' ? 'text-danger' : 'text-ink-2';
+  return (
+    <li className="rounded-[--radius-sm] border border-line-2 px-2 py-1.5" data-change={row.kind}>
+      <span className={`mr-1.5 font-medium ${tone}`}>
+        {KIND_LABEL[row.kind]}
+        {row.what === 'edge' ? ' edge' : ''}
+      </span>
+      <span className="text-ink">{row.summary}</span>
+      {row.details.length > 0 && <span className="text-ink-3"> · {row.details.join(', ')}</span>}
+    </li>
+  );
+}
+
+/**
+ * Puts an old canvas version back as a new version. Two presses, because it
+ * replaces what readers see, including anything an agent wrote since. Nothing
+ * is lost: the version before the restore stays in History.
+ */
+function RestoreCanvas({ artifactId, detail, onRestored }: { artifactId: string; detail: ArtifactVersionDetail; onRestored: () => void }) {
+  const [state, setState] = useState<'idle' | 'confirm' | 'working' | 'failed'>('idle');
+  const [message, setMessage] = useState('');
+  useEffect(() => setState('idle'), [detail.version]);
+
+  const restore = async () => {
+    setState('working');
+    try {
+      const current = await api<CanvasDocument & { kite: { version: number } }>(`/api/artifacts/${artifactId}/canvas`);
+      const ops = restoreOps({ nodes: current.nodes, edges: current.edges }, parseCanvasContent(detail.content));
+      if (ops.length > 0) {
+        await api(`/api/artifacts/${artifactId}/canvas/ops`, {
+          method: 'POST',
+          body: JSON.stringify({ baseVersion: current.kite.version, ops }),
+        });
+      }
+      onRestored();
+    } catch (error) {
+      setState('failed');
+      setMessage(error instanceof ApiError && error.status === 409 ? 'The canvas changed while restoring. Try again.' : 'Could not restore this version.');
+    }
+  };
+
+  if (state === 'confirm' || state === 'working') {
+    return (
+      <span className="flex items-center gap-1" data-testid="restore-confirm">
+        <span className="text-ink-2">Replace the current canvas with version {detail.version}?</span>
+        <Button size="sm" tone="primary" disabled={state === 'working'} onClick={() => void restore()}>
+          {state === 'working' ? 'Restoring…' : 'Restore'}
+        </Button>
+        <Button size="sm" tone="ghost" disabled={state === 'working'} onClick={() => setState('idle')}>
+          Cancel
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <>
+      {state === 'failed' && <span className="text-danger">{message}</span>}
+      <Button size="sm" tone="default" onClick={() => setState('confirm')}>
+        Restore this version
+      </Button>
+    </>
   );
 }

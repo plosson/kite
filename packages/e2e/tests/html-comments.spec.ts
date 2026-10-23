@@ -276,19 +276,24 @@ test('the panel says when the element a comment was on is gone', async ({ page, 
   await expect(panel.getByText(/no longer in the page/i)).toBeVisible();
 });
 
-test('the reader who cannot comment gets the artifact exactly as published', async ({
-  page,
-  context,
-}) => {
+test('a reader who cannot comment gets the framed copy without the comment bridge', async ({ page }) => {
   const artifact = await server.publish({ type: 'html', content: PAGE });
-  await server.signInBrowser(context);
+  await server.as(`/api/artifacts/${artifact.id}/sharing/public`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isPublic: true }),
+  });
+  // Signed out: a public reader, who may read but not comment.
   await page.goto(`${server.baseUrl}/a/${artifact.slug}`);
   await expect(page.frameLocator('iframe').locator('h1')).toBeVisible();
 
-  // The owner can comment, so this checks the other half: the frame source only
-  // asks for the bridged copy when the reader may actually use it.
+  // Every reader's frame asks for the framed copy, which keeps their place
+  // across versions; the server leaves the bridge out of it for this one.
   const source = await page.locator('iframe').getAttribute('src');
   expect(source).toContain('frame=1');
+  const served = await (await fetch(`${server.baseUrl}${source}`)).text();
+  expect(served).toContain('open-artifact.position.v1');
+  expect(served).not.toContain('open-artifact.bridge.v1');
 });
 
 test('a message from somewhere other than the frame is ignored', async ({ page, context }) => {

@@ -16,6 +16,11 @@
  *   somebody they were mentioned on a document they cannot open is pointing at a
  *   door and not giving them the key.
  *
+ * Whoever's notifications change is told on their live topic (see
+ * live/feed.ts): a new one, one let through, one read, and an access request
+ * arriving or being answered, which the same panel shows. Only that something
+ * changed; the bell reads what.
+ *
  * Nothing here throws into the request that triggered it. Losing a notification
  * is worse than losing nothing, but it is not a reason to also lose the comment
  * somebody just wrote.
@@ -38,6 +43,7 @@ import { newId } from '../ids.js';
 import { nowIso } from '../time.js';
 import { normaliseEmail, isValidEmail, domainOf } from '../auth/email-address.js';
 import { mentionedAddresses, type MentionCandidate } from './mentions.js';
+import type { ChangePublisher } from '../live/feed.js';
 
 export type NotificationType = 'share' | 'mention' | 'reply' | 'access-request';
 
@@ -79,10 +85,12 @@ export interface MentionSharing {
 
 export class NotificationService {
   private readonly db: Db;
+  private readonly changes: ChangePublisher;
   private readonly sharing: MentionSharing | null;
 
-  constructor(db: Db, sharing?: MentionSharing) {
+  constructor(db: Db, changes: ChangePublisher, sharing?: MentionSharing) {
     this.db = db;
+    this.changes = changes;
     this.sharing = sharing ?? null;
   }
 
@@ -462,7 +470,12 @@ export class NotificationService {
    * Answers a request. Granting releases every mention that was waiting on it,
    * which is the moment telling that person becomes useful rather than annoying.
    */
-  decideRequest(requestId: string, granted: boolean): { email: string; artifactId: string } | null {
+  decideRequest(
+    requestId: string,
+    granted: boolean,
+    /** The owner's tab that answered, so it is not told about its own answer. */
+    clientId: string | null = null,
+  ): { email: string; artifactId: string } | null {
     const request = this.db
       .select()
       .from(accessRequests)
@@ -477,6 +490,14 @@ export class NotificationService {
       .run();
 
     if (granted) this.releaseHeldFor(request.email, request.artifactId);
+
+    // Off the owner's list of things waiting on them.
+    const owner = this.db
+      .select({ ownerId: artifacts.ownerId })
+      .from(artifacts)
+      .where(eq(artifacts.id, request.artifactId))
+      .get();
+    if (owner) this.changed(owner.ownerId, clientId);
 
     return { email: request.email, artifactId: request.artifactId };
   }
@@ -505,6 +526,7 @@ export class NotificationService {
       )
       .run();
 
+    if (result.changes > 0) this.changed(user.id);
     return result.changes;
   }
 
@@ -533,7 +555,8 @@ export class NotificationService {
     return row?.count ?? 0;
   }
 
-  markRead(userId: string, notificationId: string): boolean {
+  /** `clientId`: the tab that did it, so that tab is not told about its own click. */
+  markRead(userId: string, notificationId: string, clientId: string | null = null): boolean {
     const result = this.db
       .update(notifications)
       .set({ readAt: nowIso() })
@@ -545,15 +568,18 @@ export class NotificationService {
         ),
       )
       .run();
+    if (result.changes > 0) this.changed(userId, clientId);
     return result.changes > 0;
   }
 
-  markAllRead(userId: string): number {
-    return this.db
+  markAllRead(userId: string, clientId: string | null = null): number {
+    const marked = this.db
       .update(notifications)
       .set({ readAt: nowIso() })
       .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)))
       .run().changes;
+    if (marked > 0) this.changed(userId, clientId);
+    return marked;
   }
 
   // ---------------------------------------------------------------------------
@@ -584,6 +610,13 @@ export class NotificationService {
         held: input.held ? 1 : 0,
       })
       .run();
+
+    // A held one is not theirs to see yet; they hear about it when it is let through.
+    if (!input.held) this.changed(input.userId);
+  }
+
+  private changed(userId: string, clientId: string | null = null): void {
+    this.changes.publish({ kind: 'notifications', userId, clientId });
   }
 
   private view(row: NotificationRow): NotificationView {

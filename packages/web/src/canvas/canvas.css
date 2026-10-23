@@ -1,0 +1,57 @@
+/* Connection handles: invisible until the owner points at a node. */
+.kite-canvas .kite-handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-surface, #fff);
+  background: var(--color-accent, #0090ff);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.kite-canvas.is-editable .react-flow__node:hover .kite-handle,
+.kite-canvas.is-editable .react-flow__node.selected .kite-handle,
+.kite-canvas.is-editable .react-flow__handle.connectingfrom,
+.kite-canvas.is-editable.is-connecting .kite-handle {
+  opacity: 1;
+}
+.kite-canvas .react-flow__node.selected > div {
+  outline: 2px solid var(--color-accent, #0090ff);
+  outline-offset: 1px;
+}
+.kite-canvas .react-flow__node.kite-highlighted > div {
+  outline: 2px solid #ffc53d;
+  outline-offset: 2px;
+}
+/* A Markdown preview set in the app's own type, scaled to a card. */
+.kite-canvas .kite-prose {
+  font-size: 12px;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+.kite-canvas .kite-prose h1 { font-size: 1.35em; }
+.kite-canvas .kite-prose h2 { font-size: 1.2em; }
+.kite-canvas .kite-prose h3 { font-size: 1.05em; }
+
+/* History's Changes, drawn on the canvas. */
+.kite-canvas .react-flow__node.kite-mark-added > div {
+  outline: 2px solid #30a46c;
+  outline-offset: 2px;
+}
+.kite-canvas .react-flow__node.kite-mark-changed > div {
+  outline: 2px dashed #f76b15;
+  outline-offset: 2px;
+}
+.kite-canvas .react-flow__node.kite-mark-removed {
+  opacity: 0.45;
+}
+.kite-canvas .react-flow__node.kite-mark-removed > div {
+  outline: 2px dashed #e5484d;
+  outline-offset: 2px;
+}
+.kite-canvas .react-flow__edge.kite-mark-added path {
+  stroke: #30a46c !important;
+}
+.kite-canvas .react-flow__edge.kite-mark-removed path {
+  stroke: #e5484d !important;
+  stroke-dasharray: 6 4;
+}

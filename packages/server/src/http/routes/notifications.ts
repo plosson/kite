@@ -7,6 +7,7 @@ import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
 import { requireAccess, accessReason } from '../../artifacts/access.js';
+import { originOf } from '../origin.js';
 
 export function registerNotificationRoutes(app: Hono<AppEnv>, context: AppContext): void {
   const { notifications, artifacts, sharing, comments, config, mailer } = context;
@@ -21,7 +22,7 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, context: AppContex
   });
 
   app.post('/api/notifications/:id/read', requireUser, (c) => {
-    if (!notifications.markRead(currentUser(c).id, c.req.param('id'))) {
+    if (!notifications.markRead(currentUser(c).id, c.req.param('id'), originOf(c).clientId)) {
       // Already read, or not theirs. Neither is worth an error page.
       return c.body(null, 204);
     }
@@ -29,7 +30,7 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, context: AppContex
   });
 
   app.post('/api/notifications/read-all', requireUser, (c) => {
-    return c.json({ marked: notifications.markAllRead(currentUser(c).id) });
+    return c.json({ marked: notifications.markAllRead(currentUser(c).id, originOf(c).clientId) });
   });
 
   /**
@@ -105,7 +106,7 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, context: AppContex
       .find((request) => request.id === c.req.param('id'));
     if (!pending) throw new ApiError('not_found', 'No such request waiting on you.');
 
-    const decided = notifications.decideRequest(pending.id, body.grant);
+    const decided = notifications.decideRequest(pending.id, body.grant, originOf(c).clientId);
     if (!decided) throw new ApiError('not_found', 'That request has already been answered.');
 
     if (body.grant) {

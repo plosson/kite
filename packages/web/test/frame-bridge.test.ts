@@ -4,6 +4,9 @@ import {
   bridgeMessageType,
   isFromFrame,
   BRIDGE_CHANNEL,
+  POSITION_CHANNEL,
+  readPositionMessage,
+  restoreMessage,
 } from '../src/components/frame-bridge.js';
 
 /**
@@ -106,5 +109,38 @@ describe('deciding a message came from our frame', () => {
         contentWindow: null,
       } as HTMLIFrameElement),
     ).toBe(false);
+  });
+});
+
+describe('reading where a frame says it is scrolled to', () => {
+  const scrolled = (x: unknown, y: unknown) => ({ channel: POSITION_CHANNEL, type: 'scrolled', x, y });
+
+  it('speaks the channel the server’s place-keeping script speaks', () => {
+    // Mirrors render/frame-position.ts on the server, which serves the other end.
+    expect(POSITION_CHANNEL).toBe('open-artifact.position.v1');
+  });
+
+  it('takes two plain numbers in range', () => {
+    expect(readPositionMessage(scrolled(0, 1840.5))).toEqual({ x: 0, y: 1840.5 });
+  });
+
+  it('takes nothing else', () => {
+    for (const message of [
+      null,
+      'scrolled',
+      scrolled('0', 10),
+      scrolled(0, Number.NaN),
+      scrolled(0, Number.POSITIVE_INFINITY),
+      scrolled(-1, 10),
+      scrolled(0, 1e9),
+      { ...scrolled(0, 10), channel: BRIDGE_CHANNEL },
+      { ...scrolled(0, 10), type: 'restore' },
+    ]) {
+      expect(readPositionMessage(message)).toBeNull();
+    }
+  });
+
+  it('sends back nothing but the place', () => {
+    expect(restoreMessage({ x: 0, y: 12 })).toEqual({ channel: POSITION_CHANNEL, type: 'restore', x: 0, y: 12 });
   });
 });

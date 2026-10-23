@@ -10,13 +10,14 @@
  * person, so somebody who prefers it open keeps it open.
  */
 
+import type { ArtifactType } from '@open-artifact/shared';
+import { typeLetter } from '../type-letter.js';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '../router.jsx';
 import { useAccount } from '../App.jsx';
 import { type ArtifactSummary, type SharedArtifact, type WorkspaceSummary } from '../api.js';
 import { Spinner } from './primitives.js';
 import { NotificationsButton, NotificationsPanel } from './Notifications.js';
-import { endpoints } from '../api.js';
 import { useStars } from '../stars.js';
 import { ThemeControl } from './ThemeControl.js';
 import { groupByWorkspace, INBOX_ID, type ListedArtifact } from '../workspaces.js';
@@ -24,6 +25,8 @@ import { WorkspaceDialog, MoveDialog } from './WorkspaceDialogs.js';
 import { useNarrowScreen } from '../viewport.js';
 import { SlidingTitle } from './SlidingTitle.js';
 import { KITE_VERSION } from '../version.js';
+import { LiveContext, useLiveUnread } from '../live.js';
+import { LiveStatus } from './LiveStatus.js';
 
 const COLLAPSE_PREFERENCE = 'oa.sidebar.collapsed';
 const DRAG_TYPE = 'application/x-kite-artifact';
@@ -529,7 +532,7 @@ function ArtifactLink({
   title: string;
   subtitle?: string;
   active: boolean;
-  type: 'markdown' | 'html';
+  type: ArtifactType;
   starred?: boolean;
   /** Left out for a row that has no star control, like a loading placeholder. */
   onToggleStar?: () => void;
@@ -676,30 +679,12 @@ function AccountRow() {
   const { user, signOut } = useAccount();
   const { navigate, path } = useRouter();
   const [bellOpen, setBellOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // Polled rather than pushed. A live connection for a count that changes a few
-  // times a day is a lot of moving parts to keep working; a request every half
-  // minute is not.
-  useEffect(() => {
-    let alive = true;
-
-    const check = () => {
-      endpoints
-        .notifications()
-        .then((response) => alive && setUnread(response.unread))
-        .catch(() => undefined);
-    };
-
-    check();
-    const timer = setInterval(check, 30_000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [bellOpen]);
+  // Pushed over the tab's connection, which every connection starts with the
+  // count as it is then, so a bell that was offline catches up on reconnecting.
+  const live = useContext(LiveContext);
+  const unread = useLiveUnread(live) ?? 0;
 
   // The settings menu closes when you click away from it or press Escape, the
   // way a menu is expected to. Bound only while it is open.
@@ -727,11 +712,11 @@ function AccountRow() {
         unread={unread}
         open={bellOpen}
         onToggle={() => setBellOpen((wasOpen) => !wasOpen)}
+        status={<LiveStatus connection={live} testId="notifications-live" dotOnly />}
       />
 
       {bellOpen && (
         <NotificationsPanel
-          onCountChanged={setUnread}
           onClose={() => setBellOpen(false)}
           onOpenArtifact={(slug, threadId) => {
             navigate(threadId ? `/a/${slug}?thread=${threadId}` : `/a/${slug}`);
@@ -875,13 +860,13 @@ export function Avatar({ email, size = 20 }: { email: string; size?: number }) {
   );
 }
 
-function TypeIcon({ type }: { type: 'markdown' | 'html' }) {
+function TypeIcon({ type }: { type: ArtifactType }) {
   return (
     <span
       aria-hidden="true"
       className="grid size-4 shrink-0 place-items-center rounded-[3px] border border-line text-[7px] font-bold uppercase tracking-tight text-ink-3"
     >
-      {type === 'markdown' ? 'M' : 'H'}
+      {typeLetter(type)}
     </span>
   );
 }

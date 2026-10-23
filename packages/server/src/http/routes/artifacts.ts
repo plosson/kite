@@ -11,6 +11,7 @@ import { INBOX_ID, TIMELINE_DEFAULT_LIMIT, TIMELINE_MAX_LIMIT } from '@open-arti
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
+import { actorOf } from '../origin.js';
 import { readJsonObject, jsonBodyCap } from '../body.js';
 import { requireAccess, canAccess } from '../../artifacts/access.js';
 import type { ArtifactDetail, ArtifactSummary } from '../../artifacts/service.js';
@@ -162,16 +163,7 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
       description: optionalString(body, 'description'),
       summary: optionalString(body, 'summary'),
       baseVersion: requireInteger(body, 'baseVersion'),
-    });
-
-    // Every anchored comment is re-checked against the new content. Ones whose
-    // passage survived keep their place; ones whose passage is gone become
-    // document-level and are marked, rather than being moved to whatever text
-    // now sits where they used to point.
-    const lost = context.comments.relocateAll(updated.id, updated.content, updated.type);
-    if (lost > 0) {
-      c.get('logger')?.info('comment anchors lost their place', { artifactId: updated.id, lost });
-    }
+    }, actorOf(c));
 
     return c.json(withUrl(updated, config.baseUrl));
   });
@@ -193,7 +185,7 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
       title: optionalString(body, 'title'),
       description: optionalString(body, 'description'),
       summary: optionalString(body, 'summary'),
-    });
+    }, actorOf(c));
     return c.json(withUrl(described, config.baseUrl));
   });
 
@@ -212,7 +204,7 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
         'Deleting is permanent. Repeat the request with ?confirm=true to go ahead.',
       );
     }
-    artifacts.delete(artifact.id);
+    artifacts.delete(artifact.id, actorOf(c));
     return c.body(null, 204);
   });
 

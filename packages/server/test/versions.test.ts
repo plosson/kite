@@ -219,7 +219,7 @@ describe('the content of a past version', () => {
     expect(await current.text()).toContain('Second draft');
   });
 
-  it('serves an old HTML version as-is and never with the comment bridge', async () => {
+  it('serves an old HTML version as-is, with neither the comment bridge nor the place-keeping script', async () => {
     const page = await owner.publish({ type: 'html', content: '<!doctype html><p>Old page</p>', title: 'Page' });
     const put = await owner.as(`/api/artifacts/${page.id}`, {
       method: 'PUT',

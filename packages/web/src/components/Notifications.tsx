@@ -8,9 +8,16 @@
  * Access requests sit at the top of the same panel rather than somewhere
  * separate. They are the only notification that needs an answer, and burying
  * them under a settings page means somebody waits days to be let into a document.
+ *
+ * Both follow the tab's live connection (live.ts): the count is the one it
+ * reports, and an open panel reads its list again when somebody else's doing
+ * moves the count, or when the connection is back after a drop and anything
+ * may have changed. This tab's own reading moves the count too; the panel
+ * already shows what it did, so that is not read again.
  */
 
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
+import { LiveContext, useLiveEvents } from '../live.js';
 import { endpoints, type NotificationView, type AccessRequest } from '../api.js';
 import { Button, RelativeTime, Spinner, EmptyState } from './primitives.js';
 import { Avatar } from './Sidebar.js';
@@ -18,12 +25,9 @@ import { Avatar } from './Sidebar.js';
 export function NotificationsPanel({
   onOpenArtifact,
   onClose,
-  onCountChanged,
 }: {
   onOpenArtifact: (slug: string, threadId: string | null) => void;
   onClose: () => void;
-  /** So the bell's count keeps up without waiting for the next poll. */
-  onCountChanged: (unread: number) => void;
 }) {
   const [items, setItems] = useState<NotificationView[] | null>(null);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
@@ -32,10 +36,7 @@ export function NotificationsPanel({
   function load() {
     endpoints
       .notifications()
-      .then((response) => {
-        setItems(response.notifications);
-        onCountChanged(response.unread);
-      })
+      .then((response) => setItems(response.notifications))
       .catch(() => setItems([]));
     endpoints
       .accessRequests()
@@ -44,6 +45,10 @@ export function NotificationsPanel({
   }
 
   useEffect(load, []);
+
+  useLiveEvents(useContext(LiveContext), (event) => {
+    if ((event.type === 'notifications' && !event.self) || (event.type === 'ready' && event.reconnected)) load();
+  });
 
   async function decide(request: AccessRequest, grant: boolean) {
     setBusy(request.id);
@@ -163,10 +168,13 @@ export function NotificationsButton({
   unread,
   open,
   onToggle,
+  status,
 }: {
   unread: number;
   open: boolean;
   onToggle: () => void;
+  /** Whether the count is being kept up to date right now. */
+  status?: ReactNode;
 }) {
   return (
     <button
@@ -181,6 +189,7 @@ export function NotificationsButton({
     >
       <BellIcon />
       <span className="flex-1">Notifications</span>
+      {status}
       {unread > 0 && (
         <span className="grid h-[16px] min-w-[16px] shrink-0 place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums text-white">
           {unread > 99 ? '99+' : unread}

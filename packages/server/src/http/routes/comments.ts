@@ -14,6 +14,7 @@ import type { Hono } from 'hono';
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
+import { originOf } from '../origin.js';
 
 import { requireAccess } from '../../artifacts/access.js';
 import type { ThreadStatus, CommentPosition } from '../../comments/service.js';
@@ -114,10 +115,14 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     const artifact = artifactFor(c.req.param('id'), 'comment', c);
     const body = await readJson(c.req.raw);
 
-    if (artifact.type === 'markdown') {
+    // Only HTML has elements to preview. Named one by one, so a new type is
+    // refused here rather than having its content parsed as a web page.
+    if (artifact.type !== 'html') {
       throw new ApiError(
         'validation_failed',
-        'Element anchors are for HTML artifacts. A passage of a Markdown document is anchored by its text.',
+        artifact.type === 'canvas'
+          ? 'Element anchors are for HTML artifacts. A comment on a canvas is anchored by nodeId.'
+          : 'Element anchors are for HTML artifacts. A passage of a Markdown document is anchored by its text.',
       );
     }
 
@@ -169,6 +174,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
       author,
       body: requireString(body, 'body'),
       position,
+      origin: originOf(c),
     });
 
     const first = thread.comments[0];
@@ -208,7 +214,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     const author = currentUser(c);
     const body = await readJson(c.req.raw);
 
-    const reply = comments.reply(threadId, author, requireString(body, 'body'));
+    const reply = comments.reply(threadId, author, requireString(body, 'body'), originOf(c));
 
     const facts = sharing.accessFactsFor(artifact);
     const mentions = notifications.recordMentions({
@@ -244,7 +250,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
       throw new ApiError('validation_failed', 'status must be "open" or "resolved".');
     }
 
-    return c.json(comments.setStatus(threadId, currentUser(c), artifact.ownerId, status));
+    return c.json(comments.setStatus(threadId, currentUser(c), artifact.ownerId, status, originOf(c)));
   });
 
   /**
@@ -259,7 +265,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     artifactFor(comments.artifactIdForComment(commentId), 'comment', c);
 
     const body = await readJson(c.req.raw);
-    return c.json(comments.edit(commentId, currentUser(c), requireString(body, 'body')));
+    return c.json(comments.edit(commentId, currentUser(c), requireString(body, 'body'), originOf(c)));
   });
 
   /** Delete a comment. Yours, or anything on an artifact you own. */
@@ -267,7 +273,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     const commentId = c.req.param('commentId');
     const artifact = artifactFor(comments.artifactIdForComment(commentId), 'comment', c);
 
-    return c.json(comments.delete(commentId, currentUser(c), artifact.ownerId));
+    return c.json(comments.delete(commentId, currentUser(c), artifact.ownerId, originOf(c)));
   });
 }
 
@@ -290,6 +296,13 @@ function readPosition(body: Record<string, unknown>): CommentPosition | undefine
   }
 
   const value = position as Record<string, unknown>;
+
+  if ('nodeId' in value) {
+    if (typeof value.nodeId !== 'string' || value.nodeId === '') {
+      throw new ApiError('validation_failed', 'position.nodeId must be the id of a node on the canvas.');
+    }
+    return { nodeId: value.nodeId };
+  }
 
   if ('elementId' in value || 'path' in value) {
     return readElementPosition(value);

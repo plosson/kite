@@ -31,6 +31,7 @@ import {
 } from '../db/schema.js';
 import { newId } from '../ids.js';
 import { nowIso, parseIso } from '../time.js';
+import type { ChangePublisher, Origin } from '../live/feed.js';
 import { ApiError, notFound } from '../errors.js';
 import {
   anchorForOccurrence,
@@ -40,6 +41,7 @@ import {
   type Anchor,
   type TextAnchor,
 } from './anchors.js';
+import { nodeText, parseCanvas } from '@open-artifact/shared';
 import {
   anchorForElement,
   relocateElement,
@@ -57,7 +59,9 @@ export type CommentPosition =
   /** Markdown: the passage the reader selected. */
   | { headingId?: string | null; snippet: string; occurrence: number }
   /** HTML: the element they selected, and what they had highlighted inside it. */
-  | { elementId?: string | null; path?: string | null; snippet?: string | null };
+  | { elementId?: string | null; path?: string | null; snippet?: string | null }
+  /** Canvas: the node or edge, by id. */
+  | { nodeId: string };
 
 /** The longest a single comment can be. Long enough for a paragraph of thought. */
 export const MAX_COMMENT_LENGTH = 10_000;
@@ -104,11 +108,22 @@ export interface ListOptions {
   status?: ThreadStatus | undefined;
 }
 
+/**
+ * Every change to what was said is announced on the change feed, once it is
+ * written, with whoever said it. Re-checking anchors after a new version is
+ * not: that is part of the new version, which announces itself.
+ */
 export class CommentService {
   private readonly db: Db;
+  private readonly changes: ChangePublisher;
 
-  constructor(db: Db) {
+  constructor(db: Db, changes: ChangePublisher) {
     this.db = db;
+    this.changes = changes;
+  }
+
+  private announce(artifactId: string, userId: string, origin: Origin): void {
+    this.changes.publish({ kind: 'comments', artifactId, actor: { userId, ...origin } });
   }
 
   // ---------------------------------------------------------------------------
@@ -133,6 +148,7 @@ export class CommentService {
      * whole document. Pass null for one that sits before the first heading.
      */
     position?: CommentPosition | undefined;
+    origin: Origin;
   }): ThreadView {
     const body = requireBody(input.body);
     const anchor = this.resolveAnchor(input.artifact, input.position);
@@ -166,6 +182,7 @@ export class CommentService {
         .run();
     });
 
+    this.announce(thread.artifactId, input.author.id, input.origin);
     return this.threadView(thread.id);
   }
 
@@ -175,11 +192,24 @@ export class CommentService {
   ): Anchor {
     if (!position) return DOCUMENT_ANCHOR;
 
-    // Which half of the position applies is decided by the document, not by what
+    // Which kind of position applies is decided by the document, not by what
     // arrived. An HTML artifact resolves an element against its source; a
-    // Markdown one matches the passage the reader selected.
-    if (artifact.type !== 'markdown') {
-      return this.resolveElementAnchor(artifact.content, position);
+    // Markdown one matches the passage the reader selected; a canvas holds on
+    // to a node. Every type is named: a type that fell through to "not
+    // Markdown, so HTML" would have its JSON parsed as a web page.
+    switch (artifact.type) {
+      case 'html':
+        return this.resolveElementAnchor(artifact.content, position);
+      case 'canvas':
+        return resolveNodeAnchor(artifact.content, position);
+      case 'markdown':
+        break;
+      default:
+        throw new ApiError('validation_failed', `Comments cannot be anchored in a ${artifact.type} document.`);
+    }
+
+    if ('nodeId' in position) {
+      throw new ApiError('validation_failed', 'nodeId is for canvases. A passage of a Markdown document is anchored by its text.');
     }
 
     if (!('snippet' in position) || typeof position.snippet !== 'string') {
@@ -204,6 +234,9 @@ export class CommentService {
   }
 
   private resolveElementAnchor(html: string, position: CommentPosition): ElementAnchor {
+    if ('nodeId' in position) {
+      throw new ApiError('validation_failed', 'nodeId is for canvases. An HTML comment is anchored by elementId or path.');
+    }
     const elementId = 'elementId' in position ? position.elementId : undefined;
     const path = 'path' in position ? position.path : undefined;
 
@@ -226,7 +259,7 @@ export class CommentService {
     return built.anchor;
   }
 
-  reply(threadId: string, author: UserRow, rawBody: string): CommentView {
+  reply(threadId: string, author: UserRow, rawBody: string, origin: Origin): CommentView {
     const thread = this.requireThread(threadId);
     const body = requireBody(rawBody);
 
@@ -241,6 +274,7 @@ export class CommentService {
     };
     this.db.insert(comments).values(comment).run();
 
+    this.announce(thread.artifactId, author.id, origin);
     return this.commentView(comment, author);
   }
 
@@ -248,7 +282,7 @@ export class CommentService {
   // Changing what was said
   // ---------------------------------------------------------------------------
 
-  edit(commentId: string, actor: UserRow, rawBody: string): CommentView {
+  edit(commentId: string, actor: UserRow, rawBody: string, origin: Origin): CommentView {
     const comment = this.requireComment(commentId);
 
     // Only the author, whoever else is asking. Editing somebody else's words is
@@ -263,6 +297,7 @@ export class CommentService {
 
     this.db.update(comments).set({ body, editedAt }).where(eq(comments.id, commentId)).run();
 
+    this.announce(this.artifactIdFor(comment.threadId), actor.id, origin);
     return this.commentView({ ...comment, body, editedAt }, actor);
   }
 
@@ -273,8 +308,14 @@ export class CommentService {
    * shape and a reply never becomes an answer to nothing. When nothing followed
    * it, and it was the only thing on the thread, the thread goes too.
    */
-  delete(commentId: string, actor: UserRow, artifactOwnerId: string): { threadDeleted: boolean } {
+  delete(
+    commentId: string,
+    actor: UserRow,
+    artifactOwnerId: string,
+    origin: Origin,
+  ): { threadDeleted: boolean } {
     const comment = this.requireComment(commentId);
+    const artifactId = this.artifactIdFor(comment.threadId);
 
     const isAuthor = comment.authorId === actor.id;
     const isArtifactOwner = actor.id === artifactOwnerId;
@@ -287,10 +328,12 @@ export class CommentService {
       // Nothing is left to keep the shape of, so take the thread with it rather
       // than leaving a placeholder nobody can reply to usefully.
       this.db.delete(commentThreads).where(eq(commentThreads.id, comment.threadId)).run();
+      this.announce(artifactId, actor.id, origin);
       return { threadDeleted: true };
     }
 
     this.db.update(comments).set({ deletedAt: nowIso() }).where(eq(comments.id, commentId)).run();
+    this.announce(artifactId, actor.id, origin);
     return { threadDeleted: false };
   }
 
@@ -303,6 +346,7 @@ export class CommentService {
     actor: UserRow,
     artifactOwnerId: string,
     status: ThreadStatus,
+    origin: Origin,
   ): ThreadView {
     const thread = this.requireThread(threadId);
 
@@ -325,6 +369,7 @@ export class CommentService {
       .where(eq(commentThreads.id, threadId))
       .run();
 
+    this.announce(thread.artifactId, actor.id, origin);
     return this.threadView(threadId);
   }
 
@@ -410,10 +455,8 @@ export class CommentService {
    * Threads whose passage is still there are untouched. Threads whose passage is
    * gone become document-level and are marked as having lost their place, which
    * the UI says out loud. Nothing is ever moved to different text.
-   *
-   * Returns how many lost their place, for the log.
    */
-  relocateAll(artifactId: string, newContent: string, artifactType: string): number {
+  relocateAll(artifactId: string, newContent: string, artifactType: string): void {
     // Every positioned thread, including ones already marked lost. Losing a
     // place must not be one-way: an agent that drops an id in one version and
     // restores it in the next should get the thread back, and it only can if we
@@ -424,16 +467,13 @@ export class CommentService {
       .where(
         and(
           eq(commentThreads.artifactId, artifactId),
-          inArray(commentThreads.anchorKind, ['text', 'element']),
+          inArray(commentThreads.anchorKind, ['text', 'element', 'node']),
         ),
       )
       .all();
 
-    let lostCount = 0;
-
     for (const thread of positioned) {
       const outcome = this.relocateOne(thread, newContent, artifactType);
-      if (!outcome.found) lostCount += 1;
 
       const wasLost = thread.anchorLost === 1;
       const wasDrifted = thread.anchorDrifted === 1;
@@ -455,8 +495,6 @@ export class CommentService {
         .where(eq(commentThreads.id, thread.id))
         .run();
     }
-
-    return lostCount;
   }
 
   /**
@@ -472,6 +510,17 @@ export class CommentService {
     newContent: string,
     artifactType: string,
   ): { found: boolean; drifted: boolean; refreshed?: Partial<CommentThreadRow> } {
+    if (thread.anchorKind === 'node') {
+      if (artifactType !== 'canvas') return { found: false, drifted: false };
+      const found = findCanvasItem(newContent, thread.anchorElementId ?? '');
+      if (found === null) return { found: false, drifted: false };
+      // The id held. Words that differ from the ones the comment was written
+      // about are shown as drift, the same way an HTML element whose id held but
+      // whose text changed is. The stored words are not refreshed, so the
+      // reader can still see what the comment was about.
+      return { found: true, drifted: capText(found) !== (thread.anchorElementText ?? '') };
+    }
+
     if (thread.anchorKind === 'text') {
       if (artifactType !== 'markdown') return { found: false, drifted: false };
 
@@ -484,7 +533,7 @@ export class CommentService {
       return { found: relocate(newContent, anchor).found, drifted: false };
     }
 
-    if (artifactType === 'markdown') return { found: false, drifted: false };
+    if (artifactType !== 'html') return { found: false, drifted: false };
 
     const anchor: ElementAnchor = {
       kind: 'element',
@@ -691,7 +740,54 @@ function columnsFor(anchor: Anchor): Pick<
     };
   }
 
+  if (anchor.kind === 'node') {
+    return {
+      ...empty,
+      anchorKind: 'node',
+      anchorSnippet: anchor.snippet,
+      anchorElementId: anchor.nodeId,
+      anchorElementText: anchor.text,
+    };
+  }
+
   return { ...empty, anchorKind: 'document' };
+}
+
+/** Comment anchors on canvases keep this much of a node's words. */
+const NODE_TEXT_CAP = 500;
+
+function capText(text: string): string {
+  return text.length > NODE_TEXT_CAP ? text.slice(0, NODE_TEXT_CAP) : text;
+}
+
+/** A node's words, an edge's label, or null when there is no such id. */
+function findCanvasItem(content: string, id: string): string | null {
+  let doc;
+  try {
+    doc = parseCanvas(content);
+  } catch {
+    return null;
+  }
+  const node = doc.nodes.find((n) => n.id === id);
+  if (node) return nodeText(node);
+  const edge = doc.edges.find((e) => e.id === id);
+  if (edge) return edge.label ?? '';
+  return null;
+}
+
+function resolveNodeAnchor(content: string, position: CommentPosition): Anchor {
+  if (!('nodeId' in position) || typeof position.nodeId !== 'string' || position.nodeId === '') {
+    throw new ApiError(
+      'validation_failed',
+      'A comment on part of a canvas needs the node it is about, as nodeId. Leave the position out entirely for a comment on the whole canvas.',
+    );
+  }
+  const text = findCanvasItem(content, position.nodeId);
+  if (text === null) {
+    throw new ApiError('validation_failed', `There is no node or edge "${position.nodeId}" on this canvas.`);
+  }
+  const capped = capText(text);
+  return { kind: 'node', nodeId: position.nodeId, text: capped, snippet: capped.slice(0, 200) };
 }
 
 /** The anchor a stored row describes. */
@@ -702,6 +798,15 @@ function anchorFrom(row: CommentThreadRow): Anchor {
       headingId: row.anchorHeadingId,
       snippet: row.anchorSnippet ?? '',
       occurrence: row.anchorOccurrence ?? 0,
+    };
+  }
+
+  if (row.anchorKind === 'node') {
+    return {
+      kind: 'node',
+      nodeId: row.anchorElementId ?? '',
+      text: row.anchorElementText ?? '',
+      snippet: row.anchorSnippet ?? '',
     };
   }
 

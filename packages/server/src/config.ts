@@ -8,6 +8,8 @@
  * Every supported variable is documented in deploy/env.example.
  */
 
+import { DEFAULT_STREAM_LIMITS } from './live/streams.js';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type SignupMode = 'open' | 'invite-only' | 'domain-allowlist';
 
@@ -75,10 +77,19 @@ export interface Config {
     publishesPerHour: number;
     /** Comments per hour, per person. */
     commentsPerHour: number;
+    /** Canvas operation batches per hour, per person. Kept apart from publishing. */
+    canvasOpsPerHour: number;
     /** Sign-in codes per hour, per address asking. Sends real email, so tightest. */
     authRequestsPerHour: number;
     /** New shares per hour, per person. Sends real email, so kept low. */
     sharesPerHour: number;
+    /**
+     * Live streams open at once (see live/streams.ts). Per person, which is
+     * one per tab; per document; and in total.
+     */
+    liveStreamsPerUser: number;
+    liveStreamsPerArtifact: number;
+    liveStreams: number;
   };
 }
 
@@ -305,6 +316,10 @@ export function loadConfig(env: Env): Config {
         min: 1,
         max: 100_000,
       }),
+      canvasOpsPerHour: readInteger(env, 'MAX_CANVAS_OPS_PER_HOUR', 600, problems, {
+        min: 1,
+        max: 100_000,
+      }),
       authRequestsPerHour: readInteger(env, 'MAX_AUTH_REQUESTS_PER_HOUR', 20, problems, {
         min: 1,
         max: 10_000,
@@ -312,6 +327,24 @@ export function loadConfig(env: Env): Config {
       sharesPerHour: readInteger(env, 'MAX_SHARES_PER_HOUR', 30, problems, {
         min: 1,
         max: 10_000,
+      }),
+      liveStreamsPerUser: readInteger(
+        env,
+        'MAX_LIVE_STREAMS_PER_USER',
+        DEFAULT_STREAM_LIMITS.perUser,
+        problems,
+        { min: 1, max: 10_000 },
+      ),
+      liveStreamsPerArtifact: readInteger(
+        env,
+        'MAX_LIVE_STREAMS_PER_ARTIFACT',
+        DEFAULT_STREAM_LIMITS.perArtifact,
+        problems,
+        { min: 1, max: 1_000_000 },
+      ),
+      liveStreams: readInteger(env, 'MAX_LIVE_STREAMS', DEFAULT_STREAM_LIMITS.total, problems, {
+        min: 1,
+        max: 1_000_000,
       }),
     },
   };

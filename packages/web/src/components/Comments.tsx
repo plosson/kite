@@ -410,6 +410,8 @@ function Thread({
         <p className="mb-2 text-[11px] leading-snug text-ink-3">
           {thread.anchor.kind === 'element'
             ? 'The element this was about is no longer in the page.'
+            : thread.anchor.kind === 'node'
+            ? 'The card this was about is no longer on the canvas.'
             : 'The passage this was about is no longer in the document.'}
         </p>
       )}

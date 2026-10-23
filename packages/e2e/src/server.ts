@@ -39,7 +39,7 @@ export interface RunningServer {
   sessionValue: string;
   /** Publishes an artifact owned by that person. */
   publish: (body: {
-    type: 'markdown' | 'html';
+    type: 'markdown' | 'html' | 'canvas';
     content: string;
     title?: string;
     description?: string;

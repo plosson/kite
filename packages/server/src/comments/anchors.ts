@@ -60,7 +60,16 @@ export interface TextAnchor {
  */
 export type { ElementAnchor } from './html-source.js';
 
-export type Anchor = DocumentAnchor | TextAnchor | ElementAnchorType;
+/** Where a comment sits on a canvas: a node or edge, by id. */
+export interface NodeAnchor {
+  kind: 'node';
+  nodeId: string;
+  /** The node's words when it was last found, capped. */
+  text: string;
+  snippet: string;
+}
+
+export type Anchor = DocumentAnchor | TextAnchor | ElementAnchorType | NodeAnchor;
 
 export const DOCUMENT_ANCHOR: DocumentAnchor = { kind: 'document' };
 

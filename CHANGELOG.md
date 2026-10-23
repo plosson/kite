@@ -29,6 +29,103 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
+## Unreleased
+
+### Edit a canvas in the browser
+
+> **As an author,** I want to change my canvas on the page,
+> **so that** I do not need an agent for small changes.
+
+Open a canvas that you own. A toolbar is at the top left. Use it to add text,
+links, Kite documents and groups. Drag a node to move it. Drag a group, and
+the nodes inside it move with it. Drag a corner to resize a node. Drag from a
+side of a node to another node to connect them. Double-click a line to label
+it or to remove it. Press Delete to remove what you selected.
+
+Press Ctrl+Z (Cmd+Z on a Mac) to undo. Undo takes back only your own change.
+If an agent changed the same thing after you, Kite tells you and does not
+undo.
+
+### See what your agent adds
+
+> **As an author,** I want to see the nodes that my agent adds,
+> **so that** I do not need to search for them.
+
+Your agent can now ask Kite to put a node next to another node. If it does
+not ask, Kite puts the node next to the last thing that changed. When new
+nodes arrive while you look at the canvas, Kite shows "1 new node · Show".
+Click Show to go to them.
+
+### See changes as they happen
+
+> **As an author,** I want my open document to show my agent's changes at once,
+> **so that** I do not need to reload the page.
+
+An open document now follows changes as they are made. When your agent
+changes a canvas, the new nodes are there at once, with "1 new node · Show".
+New comments, a new title and new versions of Markdown and HTML documents
+also arrive without a reload. Your own changes in the same tab are not shown
+as new. A dot in the bar says "Live". When the connection drops, it says
+"Reconnecting", and the page catches up when it is back. When the owner
+removes your access, the page tells you that the document is not there.
+
+When a new version of an HTML document arrives, the page stays where you
+were reading. It does not go back to the top.
+
+### See notifications as they arrive
+
+> **As a reader,** I want the bell to show a new notification at once,
+> **so that** I can answer a colleague without waiting.
+
+The bell count changes when the notification arrives. If the panel is open,
+the new notification appears in the list. A dot next to the bell shows that
+the bell is live. When you read a notification in one tab, the count changes
+in your other tabs too.
+
+### Limits on open tabs
+
+> **As an operator,** I want to limit how many live connections are open,
+> **so that** one person cannot use all of the server.
+
+Each open tab uses one live connection. Three settings limit them: per
+person (`MAX_LIVE_STREAMS_PER_USER`, 20), per document
+(`MAX_LIVE_STREAMS_PER_ARTIFACT`, 250) and in total (`MAX_LIVE_STREAMS`,
+2000). When a person opens too many tabs, their oldest tab stops. That tab
+says "Paused" and starts again when you go back to it. When a document or the
+server is full, a new tab waits and tries again later.
+
+### Comment on a node
+
+> **As a reader,** I want to comment on one card of a canvas,
+> **so that** my comment is about that card.
+
+Select a node and click Comment. A marker on the node shows the number of
+comments. The marker turns orange when the node changes after the comment.
+When the node is deleted, the canvas tells you that the comment lost its
+node.
+
+### See and restore old versions of a canvas
+
+> **As an author,** I want to see an old version of my canvas as a canvas,
+> **so that** I can see what it looked like.
+
+In History, an old version of a canvas now shows as a canvas. Click Changes
+to see what changed: new nodes are green, changed nodes are orange and
+removed nodes are faded red. Click "Restore this version" to make the old
+version current again. Kite saves this as a new version, so you lose
+nothing.
+
+### Large canvases stay fast
+
+> **As an author,** I want a canvas with thousands of nodes to move smoothly,
+> **so that** I can work on a large map.
+
+Kite does not draw nodes that are off the screen. When you zoom out, cards
+become simple boxes and labels go. On large canvases, lines go too. A large
+canvas opens close enough that only part of it is drawn.
+
+---
+
 ## 23 October 2026 (1.3.0)
 
 ### See every version of a document

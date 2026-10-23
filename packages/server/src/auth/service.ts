@@ -465,6 +465,28 @@ export class AuthService {
 
   /** Returns the signed-in person for a session cookie, or null. */
   authenticateSession(token: string): UserRow | null {
+    const found = this.liveSession(token);
+    if (!found) return null;
+
+    this.db
+      .update(authSessions)
+      .set({ lastSeenAt: nowIso() })
+      .where(eq(authSessions.id, found.sessionId))
+      .run();
+
+    return found.user;
+  }
+
+  /**
+   * Whether a session is still good, without counting this as a use of it. For
+   * a request that outlives the moment it arrived: a live stream asks again
+   * every so often, and that is not the person coming back.
+   */
+  sessionUser(token: string): UserRow | null {
+    return this.liveSession(token)?.user ?? null;
+  }
+
+  private liveSession(token: string): { sessionId: string; user: UserRow } | null {
     const session = this.db
       .select()
       .from(authSessions)
@@ -477,14 +499,7 @@ export class AuthService {
 
     const user = this.findUserById(session.userId);
     if (!user || user.deletedAt !== null) return null;
-
-    this.db
-      .update(authSessions)
-      .set({ lastSeenAt: nowIso() })
-      .where(eq(authSessions.id, session.id))
-      .run();
-
-    return user;
+    return { sessionId: session.id, user };
   }
 
   revokeSession(token: string): void {
@@ -552,6 +567,24 @@ export class AuthService {
    * in daily use never expires; one abandoned for 90 days does.
    */
   authenticateApiToken(token: string): UserRow | null {
+    const found = this.liveApiToken(token);
+    if (!found) return null;
+
+    this.db
+      .update(apiTokens)
+      .set({ lastUsedAt: nowIso(), expiresAt: daysFromNow(API_TOKEN_DAYS) })
+      .where(eq(apiTokens.id, found.tokenId))
+      .run();
+
+    return found.user;
+  }
+
+  /** Whether a token is still good, without counting this as a use of it (see sessionUser). */
+  apiTokenUser(token: string): UserRow | null {
+    return this.liveApiToken(token)?.user ?? null;
+  }
+
+  private liveApiToken(token: string): { tokenId: string; user: UserRow } | null {
     const record = this.db
       .select()
       .from(apiTokens)
@@ -568,14 +601,7 @@ export class AuthService {
 
     const user = this.findUserById(record.userId);
     if (!user || user.deletedAt !== null) return null;
-
-    this.db
-      .update(apiTokens)
-      .set({ lastUsedAt: nowIso(), expiresAt: daysFromNow(API_TOKEN_DAYS) })
-      .where(eq(apiTokens.id, record.id))
-      .run();
-
-    return user;
+    return { tokenId: record.id, user };
   }
 
   revokeApiToken(token: string): void {

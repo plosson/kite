@@ -8,6 +8,11 @@
  * The sidebar's contents are loaded here rather than inside the sidebar, because
  * the dashboard shows the same two lists. Loading them once means opening an
  * artifact from the sidebar does not refetch what is already on screen.
+ *
+ * The tab's live connection (live.ts) is opened here too, for the same reason:
+ * the sidebar's bell and the open document share it. It follows the document
+ * by the slug in the address, so it opens while the document itself is still
+ * loading, and nothing said in between is missed.
  */
 
 import { useEffect, useState, useCallback, createContext, useContext } from 'react';
@@ -17,17 +22,17 @@ import {
   type CurrentUser,
   type ArtifactSummary,
   type SharedArtifact,
-  type ExpiredLink,
   type WorkspaceSummary,
 } from './api.js';
 import { Router, useRouter } from './router.jsx';
 import { SignIn } from './pages/SignIn.jsx';
-import { Artifact, PublicArtifact, ExpiredArtifact } from './pages/Artifact.jsx';
+import { Artifact, PublicArtifact, ExpiredArtifact, useArtifact } from './pages/Artifact.jsx';
 import { Home } from './pages/Home.jsx';
 import { Sessions } from './pages/Sessions.jsx';
 import { NotFound } from './pages/NotFound.jsx';
 import { AppFrame } from './components/Sidebar.jsx';
 import { StarsProvider, useStars } from './stars.jsx';
+import { LiveContext, useLiveConnection, useLiveEvents } from './live.js';
 
 interface Account {
   user: CurrentUser;
@@ -97,16 +102,24 @@ function Shell() {
     },
   };
 
+  // The live connection says when the sign-in stopped working (signed out in
+  // another tab, or the session revoked): the same screen as signing out here,
+  // left where it is, so a public document stays on screen for them.
+  const signedOutElsewhere = () => {
+    setUser(null);
+    setStatus('signed-out');
+  };
+
   return (
     <AccountContext.Provider value={account}>
       <StarsProvider>
-        <SignedIn path={path} />
+        <SignedIn path={path} onSignedOut={signedOutElsewhere} />
       </StarsProvider>
     </AccountContext.Provider>
   );
 }
 
-function SignedIn({ path }: { path: string }) {
+function SignedIn({ path, onSignedOut }: { path: string; onSignedOut: () => void }) {
   const [mine, setMine] = useState<ArtifactSummary[]>([]);
   const [shared, setShared] = useState<SharedArtifact[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
@@ -168,38 +181,44 @@ function SignedIn({ path }: { path: string }) {
   );
 
   const artifactSlug = path.startsWith('/a/') ? decodeURIComponent(path.slice(3)) : null;
+  const live = useLiveConnection(artifactSlug === null ? null : { slug: artifactSlug });
+  useLiveEvents(live, (event) => {
+    if (event.type === 'signed-out') onSignedOut();
+  });
 
   return (
-    <AppFrame
-      data={{
-        mine,
-        shared,
-        workspaces,
-        loading,
-        onMove: move,
-        onWorkspacesChanged: reloadWorkspaces,
-        moveError,
-        onDismissMoveError: () => setMoveError(null),
-      }}
-      focusMode={artifactSlug !== null}
-    >
-      {artifactSlug !== null ? (
-        <Artifact slug={artifactSlug} />
-      ) : path === '/' || path === '/login' ? (
-        <Home
-          mine={mine}
-          shared={shared}
-          workspaces={workspaces}
-          loading={loading}
-          failed={failed}
-          onRetry={load}
-        />
-      ) : path === '/settings/sessions' ? (
-        <Sessions />
-      ) : (
-        <NotFound />
-      )}
-    </AppFrame>
+    <LiveContext.Provider value={live}>
+      <AppFrame
+        data={{
+          mine,
+          shared,
+          workspaces,
+          loading,
+          onMove: move,
+          onWorkspacesChanged: reloadWorkspaces,
+          moveError,
+          onDismissMoveError: () => setMoveError(null),
+        }}
+        focusMode={artifactSlug !== null}
+      >
+        {artifactSlug !== null ? (
+          <Artifact slug={artifactSlug} />
+        ) : path === '/' || path === '/login' ? (
+          <Home
+            mine={mine}
+            shared={shared}
+            workspaces={workspaces}
+            loading={loading}
+            failed={failed}
+            onRetry={load}
+          />
+        ) : path === '/settings/sessions' ? (
+          <Sessions />
+        ) : (
+          <NotFound />
+        )}
+      </AppFrame>
+    </LiveContext.Provider>
   );
 }
 
@@ -217,25 +236,12 @@ function SignedIn({ path }: { path: string }) {
 function SignedOut({ path, redirectTo }: { path: string; redirectTo: string | null }) {
   const slug = path.startsWith('/a/') ? decodeURIComponent(path.slice(3)) : null;
 
-  const [artifact, setArtifact] = useState<SharedArtifact | null>(null);
-  const [expired, setExpired] = useState<ExpiredLink | null>(null);
-  const [checked, setChecked] = useState(slug === null);
+  // An expired public link gets its own page: sending them to the sign-in wall
+  // instead would be telling them to get an account to fix something an
+  // account cannot fix.
+  const { artifact, missing, expired, refresh } = useArtifact(slug);
+  const checked = slug === null || artifact !== null || missing || expired !== null;
   const [wantsToSignIn, setWantsToSignIn] = useState(false);
-
-  useEffect(() => {
-    if (slug === null) return;
-
-    endpoints
-      .artifactBySlug(slug)
-      .then(setArtifact)
-      .catch((error: unknown) => {
-        // A public link that has run out. Sending them to the sign-in wall
-        // instead would be telling them to get an account to fix something an
-        // account cannot fix.
-        if (error instanceof ApiError) setExpired(error.expiredLink);
-      })
-      .finally(() => setChecked(true));
-  }, [slug]);
 
   // Same reasoning as the shell above: nothing is drawn until we know, because a
   // sign-in wall that flashes over a public document is worse than a still page.
@@ -251,7 +257,12 @@ function SignedOut({ path, redirectTo }: { path: string; redirectTo: string | nu
 
   if (artifact && slug && !wantsToSignIn) {
     return (
-      <PublicArtifact slug={slug} artifact={artifact} onSignIn={() => setWantsToSignIn(true)} />
+      <PublicArtifact
+        slug={slug}
+        artifact={artifact}
+        refresh={refresh}
+        onSignIn={() => setWantsToSignIn(true)}
+      />
     );
   }
 

@@ -51,6 +51,7 @@ import {
   ARTIFACT_SUMMARY_GUIDANCE,
 } from '@open-artifact/shared';
 import { nowIso } from '../time.js';
+import type { Actor, Origin } from '../live/feed.js';
 import { isValidEmail } from '../auth/email-address.js';
 import { sharedArtifactEmail } from '../mail/templates.js';
 import { instanceNameFrom } from '../http/routes/auth.js';
@@ -85,6 +86,13 @@ export interface McpToolContext {
   /** Who this call acts as, and through which connection. */
   user: UserRow;
   connection: McpConnectionRow;
+}
+
+/** Everything a connection writes, it writes as an agent, and never from a browser tab. */
+const AGENT: Origin = { via: 'agent', clientId: null };
+
+function agentActor(ctx: McpToolContext): Actor {
+  return { userId: ctx.user.id, ...AGENT };
 }
 
 /**
@@ -267,11 +275,7 @@ const updateArtifact: McpTool = {
       description,
       summary,
       baseVersion,
-    });
-
-    // Anchored comments are re-checked against the new content, exactly as the web
-    // update does, so a comment whose passage is gone is marked rather than moved.
-    ctx.comments.relocateAll(updated.id, updated.content, updated.type);
+    }, agentActor(ctx));
 
     return textResult(
       `Updated "${updated.title}". It is now version ${updated.version}.\n` +
@@ -601,7 +605,7 @@ const describeArtifact: McpTool = {
       title: optionalArgString(args, 'title'),
       description: optionalArgString(args, 'description'),
       summary: optionalArgString(args, 'summary'),
-    });
+    }, agentActor(ctx));
     return textResult(
       `Now titled "${described.title}".\n` +
         `description: ${described.description ?? '(none)'}\n` +
@@ -854,7 +858,7 @@ const replyToComment: McpTool = {
     const limited = checkLimit(ctx, 'comment', ctx.config.limits.commentsPerHour);
     if (limited) return limited;
 
-    const reply = ctx.comments.reply(threadId, ctx.user, body);
+    const reply = ctx.comments.reply(threadId, ctx.user, body, AGENT);
     ctx.notifications.notifyReply({
       comment: { id: reply.id, threadId },
       artifact,
@@ -889,7 +893,7 @@ const resolveCommentThread: McpTool = {
     const threadId = requireArgString(args, 'thread_id');
     const artifact = requireConnectionArtifactForThread(ctx, threadId);
 
-    ctx.comments.setStatus(threadId, ctx.user, artifact.ownerId, 'resolved');
+    ctx.comments.setStatus(threadId, ctx.user, artifact.ownerId, 'resolved', AGENT);
     return textResult('Thread resolved.');
   },
 };

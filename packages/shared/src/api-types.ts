@@ -420,7 +420,23 @@ export interface ElementAnchor {
   text: string;
 }
 
-export type CommentAnchor = DocumentAnchor | TextAnchor | ElementAnchor;
+/**
+ * A comment about one node (or edge) of a canvas.
+ *
+ * A node id is stable across every operation except deleting it, so it is the
+ * whole anchor. `snippet` is filled with the node's words, for the same reason
+ * as on ElementAnchor: older clients read it for any anchor that is not a
+ * document anchor.
+ */
+export interface NodeAnchor {
+  kind: 'node';
+  snippet: string;
+  nodeId: string;
+  /** What the node said when it was last found. A change sets anchorDrifted. */
+  text: string;
+}
+
+export type CommentAnchor = DocumentAnchor | TextAnchor | ElementAnchor | NodeAnchor;
 
 export interface CommentAuthor {
   id: string;
