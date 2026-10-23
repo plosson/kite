@@ -26,7 +26,7 @@ async function browserFor(browser: Browser, email: string): Promise<Page> {
   return context.newPage();
 }
 
-test('the owner sees who opened a document, and their own opens are not counted', async ({ page, context, browser }) => {
+test('the owner sees who opened a document, their own opens included', async ({ page, context, browser }) => {
   const artifact = await server.publish({ type: 'markdown', content: '# Launch plan\n\nDraft.', title: 'Launch plan' });
   const colleague = await browserFor(browser, 'colleague@example.com');
   await server.as(`/api/artifacts/${artifact.id}/sharing/people`, {
@@ -49,5 +49,12 @@ test('the owner sees who opened a document, and their own opens are not counted'
   const panel = page.getByTestId('views-panel');
   await expect(panel).toContainText('colleague@example.com');
   await expect(panel).toContainText('Invited');
-  await expect(panel).toContainText('1 open by you');
+  // Opening the page just now was a view too, labelled as theirs.
+  await expect(panel).toContainText('You');
+  await expect(panel).toContainText('1 by you · 1 by others');
+  await expect(panel).toContainText('0 reads by agents');
+
+  // Back in the list, the owner's own open is in the count.
+  await page.goto(server.baseUrl);
+  await expect(page.getByTestId('view-count')).toContainText('2');
 });

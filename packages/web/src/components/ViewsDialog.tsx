@@ -1,10 +1,10 @@
 /**
  * Who opened this document. The owner's answer to "did anybody read it?".
  *
- * The headline is people other than the owner opening it in a browser, because
- * that is the question. The owner's own opens and agent reads are shown under
- * it, apart, so an agent re-reading its work all afternoon never looks like an
- * audience.
+ * The headline is everybody who opened it in a browser, the owner included:
+ * an author reading what an agent produced for them is reading it. The split
+ * between "you" and "others" sits right under it. Agent reads are shown apart,
+ * so an agent re-reading its work all afternoon never looks like an audience.
  *
  * Loaded when opened rather than with the page: the page counts as an open, and
  * the dialog should show it, and most visits never ask.
@@ -68,8 +68,8 @@ function ViewsBody({ data }: { data: ArtifactViewsResponse }) {
   return (
     <div className="flex flex-col gap-4" data-testid="views-panel">
       <dl className="grid grid-cols-3 gap-3">
-        <Stat label="Views" value={totals.views} />
-        <Stat label="People" value={totals.uniqueViewers} />
+        <Stat label="Views" value={totals.views} detail={`${totals.ownerViews} by you · ${totals.otherViews} by others`} />
+        <Stat label="People" value={totals.uniqueViewers} detail={totals.otherViewers === 1 ? '1 besides you' : `${totals.otherViewers} besides you`} />
         <div>
           <dt className="text-[11px] uppercase tracking-[0.05em] text-ink-3">Last viewed</dt>
           <dd className="mt-0.5 text-[13px] text-ink">
@@ -97,8 +97,12 @@ function ViewsBody({ data }: { data: ArtifactViewsResponse }) {
               key={keyOf(viewer.viewer)}
               className="flex items-center gap-3 border-b border-line-2 py-2 text-[12.5px] last:border-0"
             >
-              <span className="min-w-0 flex-1 truncate text-ink">{nameOf(viewer.viewer)}</span>
-              <span className="shrink-0 text-ink-3">{ACCESS_LABEL[viewer.access] ?? viewer.access}</span>
+              <span className="min-w-0 flex-1 truncate text-ink">
+                {viewer.isOwner ? 'You' : nameOf(viewer.viewer)}
+              </span>
+              <span className="shrink-0 text-ink-3">
+                {viewer.isOwner ? 'Owner' : (ACCESS_LABEL[viewer.access] ?? viewer.access)}
+              </span>
               <span className="shrink-0 tabular-nums text-ink-3">
                 {viewer.views === 1 ? '1 view' : `${viewer.views} views`} · v{viewer.lastVersion}
               </span>
@@ -109,23 +113,23 @@ function ViewsBody({ data }: { data: ArtifactViewsResponse }) {
           ))}
         </ul>
       ) : (
-        <p className="text-[12.5px] text-ink-3">Nobody other than you has opened it yet.</p>
+        <p className="text-[12.5px] text-ink-3">Nobody has opened it in a browser yet.</p>
       )}
 
       <p className="text-[11.5px] text-ink-3">
-        Not counted as views: {plural(totals.ownerViews, 'open')} by you,{' '}
-        {plural(totals.agentFetches, 'read')} by agents. Kept for {data.retentionDays} days. Only
-        you can see this.
+        Not counted as views: {plural(totals.agentFetches, 'read')} by agents. Kept for{' '}
+        {data.retentionDays} days. Only you can see this.
       </p>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, detail }: { label: string; value: number; detail?: string }) {
   return (
     <div>
       <dt className="text-[11px] uppercase tracking-[0.05em] text-ink-3">{label}</dt>
       <dd className="mt-0.5 text-[17px] tabular-nums text-ink">{value}</dd>
+      {detail && <dd className="text-[11px] tabular-nums text-ink-3">{detail}</dd>}
     </div>
   );
 }

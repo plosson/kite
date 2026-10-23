@@ -88,19 +88,23 @@ The owner of a document can see who opened it: a count next to each of their
 documents in the list, and a **Views** panel on the document itself. It answers
 "did anybody read what I sent?", and it is careful about what it counts:
 
-- A **view** is somebody other than the owner opening the document in a browser.
+- A **view** is anybody opening the document in a browser, the owner included:
+  reading what an agent produced for you is reading it. The panel and the API
+  split views into yours and everybody else's, and show your own row as "You".
   A signed-in reader is shown by email. A signed-out reader of a public link is
   an anonymous id, a keyed hash of address and browser: the address itself is
   never stored.
-- The owner's own opens, and reads by agents (a command-line token or a
-  connected assistant), are recorded beside the count, never inside it.
+- A document counts as read once anybody, you included, has opened its current
+  version in a browser.
+- Reads by agents (a command-line token or a connected assistant) are recorded
+  beside the count, never inside it.
 - The same reader opening the same version again within 30 minutes is one view.
 - Records are deleted after `VIEW_RETENTION_DAYS` (180 by default), and with the
   document. Nobody but the owner can read them, and nothing leaves the instance.
 
 Agents read the same numbers from `GET /api/artifacts/:id/views` (one document,
 with each reader) and `GET /api/views` (every document, including which ones
-have a current version nobody has opened). Both are in `/openapi.json`.
+have a current version nobody has opened). Both are documented at `/api/docs`.
 
 ## Connect your agent
 

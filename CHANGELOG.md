@@ -29,6 +29,27 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
+## 23 October 2026 (1.2.1)
+
+### Your own opens count as views
+
+> **As an author,** I want my own opens to count as views, **so that** I know
+> how many times I read a document that an agent made for me.
+
+Before, Views did not count your own opens. Now each time you open your
+document in a browser, it is a view.
+
+- The count in your list includes your opens.
+- The Views panel shows your row as "You". It shows how many views are yours
+  and how many are from other people.
+- "Unread" goes away when anybody opens the newest version. This includes you.
+
+Reads by agents are still not views. The panel still shows them separately.
+
+Opens that you made before this change are already in the count.
+
+---
+
 ## 23 October 2026
 
 ### See who opened a document
