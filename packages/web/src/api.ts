@@ -25,6 +25,8 @@ import type {
   TimelineResponse,
   ArtifactViewsResponse,
   ViewsSummaryResponse,
+  ArtifactVersionsResponse,
+  ArtifactVersionDetail,
 } from '@open-artifact/shared';
 
 export type { TimelineEvent } from '@open-artifact/shared';
@@ -33,6 +35,9 @@ export type {
   ArtifactViewCounts,
   ViewViewer,
   ViewsSummaryResponse,
+  ArtifactVersionsResponse,
+  ArtifactVersionSummary,
+  ArtifactVersionDetail,
 } from '@open-artifact/shared';
 
 export type {
@@ -310,6 +315,17 @@ export const endpoints = {
   // --- Who opened it (owner only) ---
   views: (id: string) => api<ArtifactViewsResponse>(`/api/artifacts/${id}/views`),
   viewsSummary: () => api<ViewsSummaryResponse>('/api/views'),
+
+  // --- Version history (owner only) ---
+  versions: (id: string) => api<ArtifactVersionsResponse>(`/api/artifacts/${id}/versions`),
+  /**
+   * One version with its content. Opening it counts as reading it; pass
+   * `record: false` for a version fetched only to compare against.
+   */
+  version: (id: string, version: number, { record = true }: { record?: boolean } = {}) =>
+    api<ArtifactVersionDetail>(
+      `/api/artifacts/${id}/versions/${version}${record ? '' : '?record=false'}`,
+    ),
 
   // --- Sharing ---
   sharing: (id: string) => api<SharingState>(`/api/artifacts/${id}/sharing`),

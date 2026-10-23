@@ -36,6 +36,7 @@ import { useRouter, Link } from '../router.jsx';
 import { Button, Badge, RelativeTime, Spinner, Dialog } from '../components/primitives.js';
 import { ShareDialog } from '../components/ShareDialog.js';
 import { ViewsDialog } from '../components/ViewsDialog.js';
+import { HistoryDialog, PastVersion } from '../components/History.js';
 import { ThemeControl } from '../components/ThemeControl.js';
 import {
   CommentsPanel,
@@ -71,6 +72,9 @@ export function Artifact({ slug }: { slug: string }) {
   const [sharingOpen, setSharingOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  /** A version chosen from the history, shown read-only in place of the document. Null is the live one. */
+  const [viewingVersion, setViewingVersion] = useState<number | null>(null);
   const [commentsCollapsed, toggleComments] = useCommentsCollapsed();
   const [editing, setEditing] = useState(false);
   const [fullSource, setFullSource] = useState(false);
@@ -81,6 +85,12 @@ export function Artifact({ slug }: { slug: string }) {
    */
   const leaveGuard = useRef<(() => boolean) | null>(null);
   const stars = useStars();
+
+  // A version chosen on one document means nothing on the next.
+  useEffect(() => {
+    setViewingVersion(null);
+    setHistoryOpen(false);
+  }, [slug]);
 
   const conversation = useComments(artifact?.id ?? null, artifact?.youMay?.comment ?? false);
   useLinkedThread(conversation.threads, conversation.revealThread);
@@ -115,7 +125,7 @@ export function Artifact({ slug }: { slug: string }) {
           onToggle={toggleComments}
         />
 
-        {isOwner && artifact.type === 'markdown' && (
+        {isOwner && artifact.type === 'markdown' && viewingVersion === null && (
           <>
             {/* Editing is a mode for the whole document, the same class of thing
                 as sharing it. It belongs here with the rest of them rather than
@@ -146,6 +156,16 @@ export function Artifact({ slug }: { slug: string }) {
             <Button size="sm" tone="ghost" onClick={() => setViewsOpen(true)}>
               Views
             </Button>
+            {/* Every past version, read-only. Also the owner's alone: a past
+                version may hold what they took out on purpose. */}
+            <Button
+              size="sm"
+              tone={viewingVersion === null ? 'ghost' : 'default'}
+              aria-pressed={viewingVersion !== null}
+              onClick={() => setHistoryOpen(true)}
+            >
+              History
+            </Button>
             <Button size="sm" onClick={() => setSharingOpen(true)}>
               Share
             </Button>
@@ -167,44 +187,54 @@ export function Artifact({ slug }: { slug: string }) {
 
       <About description={artifact.description} summary={artifact.summary} />
 
-      <div className="flex min-h-0 flex-1">
-        <Body
+      {isOwner && viewingVersion !== null ? (
+        <PastVersion
           slug={slug}
-          artifact={artifact}
-          threads={conversation.threads}
-          activeThreadId={conversation.activeThreadId}
-          revealCount={conversation.revealCount}
-          onNewThread={conversation.reload}
-          canComment={conversation.canComment}
-          isArtifactOwner={isOwner}
-          // The owner wrote it and already uses this, and somebody already set up
-          // does not need asking; only an unconnected reader is worth the nudge.
-          publishCta={invitePublish}
-          editing={editing}
-          fullSource={fullSource}
-          leaveGuard={leaveGuard}
-          onLeaveEditing={() => {
-            setEditing(false);
-            setFullSource(false);
-          }}
-        />
-
-        <CommentsPanel
           artifactId={artifact.id}
-          threads={conversation.threads}
-          loading={conversation.loading}
-          canComment={conversation.canComment}
-          currentUserId={user.id}
-          isArtifactOwner={isOwner}
-          activeThreadId={conversation.activeThreadId}
-          revealCount={conversation.revealCount}
-          onFocusThread={conversation.focusThread}
-          onRevealThread={conversation.revealThread}
-          onChanged={conversation.reload}
-          collapsed={commentsCollapsed}
-          onToggle={toggleComments}
+          version={viewingVersion}
+          onBack={() => setViewingVersion(null)}
+          onOpenHistory={() => setHistoryOpen(true)}
         />
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <Body
+            slug={slug}
+            artifact={artifact}
+            threads={conversation.threads}
+            activeThreadId={conversation.activeThreadId}
+            revealCount={conversation.revealCount}
+            onNewThread={conversation.reload}
+            canComment={conversation.canComment}
+            isArtifactOwner={isOwner}
+            // The owner wrote it and already uses this, and somebody already set up
+            // does not need asking; only an unconnected reader is worth the nudge.
+            publishCta={invitePublish}
+            editing={editing}
+            fullSource={fullSource}
+            leaveGuard={leaveGuard}
+            onLeaveEditing={() => {
+              setEditing(false);
+              setFullSource(false);
+            }}
+          />
+
+          <CommentsPanel
+            artifactId={artifact.id}
+            threads={conversation.threads}
+            loading={conversation.loading}
+            canComment={conversation.canComment}
+            currentUserId={user.id}
+            isArtifactOwner={isOwner}
+            activeThreadId={conversation.activeThreadId}
+            revealCount={conversation.revealCount}
+            onFocusThread={conversation.focusThread}
+            onRevealThread={conversation.revealThread}
+            onChanged={conversation.reload}
+            collapsed={commentsCollapsed}
+            onToggle={toggleComments}
+          />
+        </div>
+      )}
 
       {isOwner && (
         <>
@@ -219,6 +249,19 @@ export function Artifact({ slug }: { slug: string }) {
             }
           />
           <ViewsDialog artifactId={artifact.id} open={viewsOpen} onClose={() => setViewsOpen(false)} />
+          <HistoryDialog
+            artifactId={artifact.id}
+            open={historyOpen}
+            viewing={viewingVersion}
+            onClose={() => setHistoryOpen(false)}
+            onChoose={(version) => {
+              if (editing && leaveGuard.current && !leaveGuard.current()) return;
+              setEditing(false);
+              setFullSource(false);
+              setHistoryOpen(false);
+              setViewingVersion(version);
+            }}
+          />
           <DeleteDialog
             artifact={artifact}
             open={deleteOpen}

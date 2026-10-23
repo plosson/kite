@@ -39,6 +39,7 @@ import {
   type ArtifactViewer,
   type ArtifactViewsResponse,
   type ArtifactViewSummary,
+  type ArtifactVersionViews,
   type ViewAccessPath,
   type ViewClient,
   type ViewViewer,
@@ -298,6 +299,29 @@ export class ViewService {
       },
       artifacts,
     };
+  }
+
+  /**
+   * Browser opens of each version of one document, the owner's included, keyed
+   * by version. Versions nobody opened are absent. The caller checks it is the
+   * owner asking.
+   */
+  perVersion(artifactId: string): Map<number, ArtifactVersionViews> {
+    const cutoff = this.cutoff();
+    const rows = this.db.all<{ version: number; views: number; owner_views: number }>(sql`
+      select version,
+        count(*) as views,
+        coalesce(sum(case when access = 'owner' then 1 else 0 end), 0) as owner_views
+      from artifact_views
+      where artifact_id = ${artifactId} and viewed_at >= ${cutoff} and ${HUMAN}
+      group by version
+    `);
+    return new Map(
+      rows.map((row) => [
+        row.version,
+        { views: row.views, ownerViews: row.owner_views, otherViews: row.views - row.owner_views },
+      ]),
+    );
   }
 
   /** The few numbers the owner's list shows, keyed by artifact id. */

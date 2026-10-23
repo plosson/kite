@@ -172,6 +172,8 @@ share_artifact         artifact_id, email
 list_comments          artifact_id, status?, since?, limit?
 reply_to_comment       thread_id, body
 resolve_comment_thread thread_id
+list_artifact_versions artifact_id
+get_artifact_version   artifact_id, version, include_content?
 ```
 
 **Format is stated, never guessed.** There is no filename to infer from, and

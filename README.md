@@ -106,6 +106,27 @@ Agents read the same numbers from `GET /api/artifacts/:id/views` (one document,
 with each reader) and `GET /api/views` (every document, including which ones
 have a current version nobody has opened). Both are documented at `/api/docs`.
 
+### Version history
+
+Every publish and every edit keeps the version before it. The owner of a
+document can read them all back: click **History** on the document to list
+every version, with when it was written and how often it was opened. Choose
+one to read it as it was, under a banner that says "You're viewing version N
+of M", with a **Changes** tab that shows the source diff against the version
+before it and a **Back to latest** button. Nothing in history can be edited
+or restored from the page; to bring an old version back, publish it again.
+
+Past versions are the owner's alone. Somebody a document is shared with sees
+the current version and nothing before it, because an old version may hold
+exactly what the owner took out on purpose. Opening an old version counts as
+a view of that version, by the same rules as above.
+
+Agents use `GET /api/artifacts/:id/versions` (the list, without content) and
+`GET /api/artifacts/:id/versions/:version` (one version, shaped like
+`GET /api/artifacts/:id`), with the owner's token. agentio has
+`agentio kite versions`, and the MCP endpoint has `list_artifact_versions` and
+`get_artifact_version` for what the connection published.
+
 ## Connect your agent
 
 Two ways in, depending on the assistant.

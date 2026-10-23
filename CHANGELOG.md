@@ -29,6 +29,55 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
+## 23 October 2026 (1.3.0)
+
+### See every version of a document
+
+> **As an author,** I want to see the earlier versions of my document,
+> **so that** I know what changed and when.
+
+Open one of your documents and click **History**. The panel shows each
+version. The newest version is first. For each version, it shows:
+
+- The version number and the title at that time.
+- When the version was written.
+- How many times people opened that version. Your opens are included.
+
+Click a version to read it. A banner tells you which version you see:
+
+```
+You're viewing version 1 of 3.
+[Document] [Changes] [Back to latest]
+```
+
+- **Document** shows the version as readers saw it. You cannot edit it.
+- **Changes** shows the lines that were added and removed since the
+  version before it.
+- **Back to latest** shows the current version again.
+
+Only you can see the earlier versions. People you share the document with
+see only the current version. An earlier version can contain text that you
+removed on purpose.
+
+When you open an earlier version, it counts as a view of that version.
+
+### Agents can read earlier versions
+
+> **As an author,** I want my agent to read the earlier versions,
+> **so that** it can compare them or bring back old text.
+
+The API has two new endpoints. They work only for the owner:
+
+- `GET /api/artifacts/:id/versions` lists the versions.
+- `GET /api/artifacts/:id/versions/:version` gives one version with its
+  content.
+
+Connected assistants have two new tools: `list_artifact_versions` and
+`get_artifact_version`. They work on the documents that the assistant
+published.
+
+---
+
 ## 23 October 2026 (1.2.1)
 
 ### Your own opens count as views

@@ -613,3 +613,62 @@ export interface ViewsSummaryResponse {
 /** How many opens GET /api/artifacts/:id/views lists when it does not say, and at most. */
 export const VIEWS_RECENT_DEFAULT_LIMIT = 100;
 export const VIEWS_RECENT_MAX_LIMIT = 500;
+
+// ---------------------------------------------------------------------------
+// Version history (owner only)
+// ---------------------------------------------------------------------------
+
+/** How one version has been read, in the retention window. */
+export interface ArtifactVersionViews {
+  /** Opens of this version in a browser, the owner's included. */
+  views: number;
+  /** Of `views`, the owner's own. */
+  ownerViews: number;
+  /** Of `views`, everybody else's. */
+  otherViews: number;
+}
+
+/** One version in GET /api/artifacts/:id/versions. Never carries the content. */
+export interface ArtifactVersionSummary {
+  version: number;
+  /** When this version was written, UTC ISO-8601. */
+  createdAt: string;
+  /** 'published' for version 1, 'edited' for every one after it. */
+  kind: 'published' | 'edited';
+  type: ArtifactType;
+  /** The title the document had when this version was written. */
+  title: string;
+  /** Size of the content in UTF-8 bytes. */
+  bytes: number;
+  /** True for the version readers see now. */
+  isCurrent: boolean;
+  views: ArtifactVersionViews;
+}
+
+/** GET /api/artifacts/:id/versions. Newest version first. */
+export interface ArtifactVersionsResponse {
+  artifactId: string;
+  slug: string;
+  url: string;
+  currentVersion: number;
+  /**
+   * Who wrote the versions. Only the owner can publish or edit a document, so
+   * every version is theirs; which client wrote each one is not recorded.
+   */
+  publishedBy: { email: string | null; displayName: string | null };
+  /** How far back the per-version view counts go. */
+  retentionDays: number;
+  versions: ArtifactVersionSummary[];
+}
+
+/**
+ * GET /api/artifacts/:id/versions/:version. The same shape as
+ * GET /api/artifacts/:id, with `version`, `type`, `title` and `content` as they
+ * were at that version and `updatedAt` the moment it was written. The
+ * description and summary are not versioned, so they are always the current ones.
+ */
+export interface ArtifactVersionDetail extends ArtifactDetail {
+  /** The version readers see now. */
+  currentVersion: number;
+  isCurrent: boolean;
+}

@@ -3,16 +3,16 @@
  *
  * Two rules worth knowing before reading the code:
  *
- * 1. Every write also writes a version row. Versions are internal — no UI, no CLI
- *    exposure — but they mean an accidental overwrite is recoverable and comment
- *    anchors have a previous text to re-match against.
+ * 1. Every write also writes a version row. An accidental overwrite is
+ *    recoverable, comment anchors have a previous text to re-match against, and
+ *    the owner can read every past version back (listVersions, getVersion).
  *
  * 2. Updates carry the version they were based on. If it does not match what is
  *    stored, the update is rejected. Two agents publishing to the same artifact is
  *    a realistic accident, and silently keeping only the last one loses work.
  */
 
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import type { ArtifactType, TimelineEvent } from '@open-artifact/shared';
 import {
   isArtifactType,
@@ -88,6 +88,17 @@ export interface ArtifactSummary {
 
 export interface ArtifactDetail extends ArtifactSummary {
   content: string;
+}
+
+/** One stored version, without its content. */
+export interface StoredVersionSummary {
+  version: number;
+  createdAt: string;
+  kind: 'published' | 'edited';
+  type: ArtifactType;
+  title: string;
+  bytes: number;
+  isCurrent: boolean;
 }
 
 export interface ArtifactServiceOptions {
@@ -463,6 +474,68 @@ export class ArtifactService {
     const existing = this.requireRow(id);
     // Version rows and any stars go with it: the foreign keys cascade.
     this.db.delete(artifacts).where(eq(artifacts.id, existing.id)).run();
+  }
+
+  /**
+   * Every version of one artifact, newest first, without content. The size is
+   * measured by the database, so listing a long history never loads it. Who may
+   * see this is the caller's to decide.
+   */
+  listVersions(id: string): StoredVersionSummary[] {
+    const current = this.requireRow(id).currentVersion;
+    return this.db
+      .select({
+        version: artifactVersions.version,
+        createdAt: artifactVersions.createdAt,
+        type: artifactVersions.type,
+        title: artifactVersions.title,
+        bytes: sql<number>`length(cast(${artifactVersions.content} as blob))`,
+      })
+      .from(artifactVersions)
+      .where(eq(artifactVersions.artifactId, id))
+      .orderBy(desc(artifactVersions.version))
+      .all()
+      .map((row) => ({
+        version: row.version,
+        createdAt: row.createdAt,
+        kind: row.version === 1 ? ('published' as const) : ('edited' as const),
+        type: row.type as ArtifactType,
+        title: row.title,
+        bytes: Number(row.bytes),
+        isCurrent: row.version === current,
+      }));
+  }
+
+  /**
+   * One past (or the current) version, in the same shape as `get`: the type,
+   * title and content as they were then, `updatedAt` when it was written. The
+   * description and summary are not versioned, so they are the current ones.
+   * A version that does not exist is not found, like an artifact that does not.
+   */
+  getVersion(id: string, version: number): ArtifactDetail & { currentVersion: number; isCurrent: boolean } {
+    const artifact = this.get(id);
+    const row = this.db
+      .select()
+      .from(artifactVersions)
+      .where(and(eq(artifactVersions.artifactId, id), eq(artifactVersions.version, version)))
+      .get();
+    if (!row) {
+      throw new ApiError(
+        'not_found',
+        `This document has no version ${version}. It is at version ${artifact.version}.`,
+        { currentVersion: artifact.version },
+      );
+    }
+    return {
+      ...artifact,
+      type: row.type as ArtifactType,
+      title: row.title,
+      content: row.content,
+      version: row.version,
+      updatedAt: row.createdAt,
+      currentVersion: artifact.version,
+      isCurrent: row.version === artifact.version,
+    };
   }
 
   /** How many versions an artifact has. Internal; used by tests and by anchor re-matching. */
