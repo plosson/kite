@@ -90,9 +90,10 @@ test('a save that lost a race re-reads and lands on top', async ({ page, context
   const doc = await readCanvas(artifact.id);
   expect(doc.nodes.map((n) => n.text)).toContain('From the agent');
   expect(doc.nodes.map((n) => n.text)).toContain('Edited in the browser');
-  // Placed to the right of everything, so outside the first fit.
-  await view.getByRole('button', { name: /fit view/i }).click();
-  await expect(view.getByText('From the agent')).toBeVisible();
+  // The agent's node may land outside what is on screen; the canvas says so and takes you there.
+  await expect(page.getByTestId('canvas-incoming')).toHaveText(/1 new node/);
+  await page.getByTestId('canvas-incoming').getByRole('button', { name: 'Show' }).click();
+  await expect(view.getByText('From the agent')).toBeInViewport();
 });
 
 test('2,000 nodes render and pan', async ({ page, context }) => {
@@ -127,5 +128,17 @@ test('2,000 nodes render and pan', async ({ page, context }) => {
   const zoomStart = Date.now();
   for (let i = 0; i < 6; i += 1) await page.getByRole('button', { name: /zoom in/i }).click();
   const zoom = Date.now() - zoomStart;
-  console.log(JSON.stringify({ firstPaint, renderedNodes: rendered, panMs: pan, zoom6Ms: zoom }));
+
+  // The worst case: everything on screen, drawn as boxes with edges hidden.
+  await page.getByRole('button', { name: /fit view/i }).click();
+  await page.waitForTimeout(300);
+  const renderedFar = await page.locator('.react-flow__node').count();
+  const edgesFar = await page.locator('.react-flow__edge').count();
+  const farStart = Date.now();
+  await page.mouse.move(view.x + 200, view.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(view.x + 600, view.y + 400, { steps: 40 });
+  await page.mouse.up();
+  const panFar = Date.now() - farStart;
+  console.log(JSON.stringify({ firstPaint, renderedNodes: rendered, panMs: pan, zoom6Ms: zoom, renderedFar, edgesFar, panFarMs: panFar }));
 });

@@ -69,3 +69,47 @@ describe('the canvas save queue', () => {
     expect(sent).toHaveLength(1);
   });
 });
+
+describe('ordering in the save queue', () => {
+  it('keeps a delete, a re-add and a second delete of the same id in order', async () => {
+    const { queue, sent } = harness();
+    queue.push({ op: 'delete', id: 'a' });
+    queue.push({ op: 'add', id: 'a', node: { text: 'back' } });
+    queue.push({ op: 'delete', id: 'a' });
+    await queue.flush();
+    expect(sent[0]?.ops.map((o) => o.op)).toEqual(['delete', 'add', 'delete']);
+  });
+
+  it('does not fold a move across an edit of the same node', async () => {
+    const { queue, sent } = harness();
+    queue.push({ op: 'move', id: 'a', x: 1, y: 1 });
+    queue.push({ op: 'delete', id: 'a' });
+    queue.push({ op: 'move', id: 'a', x: 2, y: 2 });
+    await queue.flush();
+    expect(sent[0]?.ops).toHaveLength(3);
+  });
+
+  it('merges back-to-back text edits of one node', async () => {
+    const { queue, sent } = harness();
+    queue.push({ op: 'update', id: 'a', set: { text: 'h' } });
+    queue.push({ op: 'update', id: 'a', set: { text: 'hi' } });
+    await queue.flush();
+    expect(sent[0]?.ops).toEqual([{ op: 'update', id: 'a', set: { text: 'hi' } }]);
+  });
+
+  it('hands the failed batch to onError', async () => {
+    const onError = vi.fn();
+    const queue = createOpsQueue({
+      delayMs: 5,
+      getVersion: () => 1,
+      reload: async () => 1,
+      send: async () => {
+        throw new ApiError(400, { code: 'validation_failed', message: 'bad' });
+      },
+      onError,
+    });
+    queue.push({ op: 'move', id: 'a', x: 0, y: 0 });
+    await queue.flush();
+    expect(onError.mock.calls[0]?.[1]).toEqual([{ op: 'move', id: 'a', x: 0, y: 0 }]);
+  });
+});

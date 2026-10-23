@@ -386,10 +386,21 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '404': 'No such artifact, or you may not read it',
     },
   },
+  'GET /api/artifacts/:id/canvas/outline': {
+    summary: 'A short map of a canvas',
+    description:
+      'Anybody who may read the canvas may read this. Returns `docId`, `version`, `counts`, `bounds`, `tree` (groups nested by geometry, each node one `summary` line with its box) and `freeSlot` (a clear spot right of the content). `frame=<group id>` limits it to one group; `depth=N` stops nesting after N levels.',
+    auth: 'optional',
+    responses: {
+      '200': 'The outline',
+      '400': 'Not a canvas, an unknown frame, or a bad depth',
+      '404': 'Not found, or not yours to read',
+    },
+  },
   'POST /api/artifacts/:id/canvas/ops': {
     summary: 'Change a canvas with a batch of operations',
     description:
-      'Owner only. Body: `baseVersion` (the version you read), `ops` (up to 500), optional `dryRun`. Operations: `add` {node, tempId?, id?, in?}, `update` {id, set, unset?}, `move` {id, x, y} (a group carries the nodes inside it), `resize` {id, width, height}, `delete` {id} (a node takes its edges with it), `connect` {from, to, tempId?, label?, fromSide?, toSide?}, `disconnect` {id}. Later operations may name an earlier one by its tempId. All or nothing: one bad operation refuses the whole batch with 400 and `details.opIndex`. A batch based on an older version is refused with 409 `version_conflict`; read the canvas again and resend. A successful batch writes exactly one new version and returns `version`, `ids` (tempId → id) and `touched`. Counted against its own hourly limit, not against publishing.',
+      'Owner only. Body: `baseVersion` (the version you read), `ops` (up to 500), optional `dryRun`. Operations: `add` {node, tempId?, id?, in?, near?, side?} (with no x/y: `in` drops it into a group, `near` puts it beside a node on `side` (default right), and with neither it lands beside the most recently changed node, always clear of other nodes), `update` {id, set, unset?} (on an edge: label, color, fromSide, toSide), `move` {id, x, y} (a group carries the nodes inside it), `resize` {id, width, height}, `delete` {id} (a node takes its edges with it), `connect` {from, to, tempId?, label?, fromSide?, toSide?}, `disconnect` {id}. Later operations may name an earlier one by its tempId. All or nothing: one bad operation refuses the whole batch with 400 and `details.opIndex`. A batch based on an older version is refused with 409 `version_conflict`; read the canvas again and resend. A successful batch writes exactly one new version and returns `version`, `ids` (tempId → id) and `touched`. Counted against its own hourly limit, not against publishing.',
     auth: 'required',
     responses: {
       '200': 'Applied (or checked, with dryRun)',

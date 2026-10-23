@@ -356,3 +356,59 @@ describe('commenting on a canvas node', () => {
     expect(response.status).toBe(400);
   });
 });
+
+describe('the canvas outline', () => {
+  it('nests groups and gives one line per node, with the version', async () => {
+    const artifact = await publishBoard();
+    const response = await owner.as(`/api/artifacts/${artifact.id}/canvas/outline`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-artifact-version')).toBe('1');
+    const body = (await response.json()) as any;
+    expect(body).toMatchObject({ docId: artifact.id, version: 1, counts: { nodes: 4, edges: 1, groups: 1 } });
+    expect(body.tree.map((n: any) => n.id)).toEqual(['g1', 'l1']);
+    expect(body.tree[0].children.map((n: any) => n.summary)).toEqual(['Ship the canvas spike', 'Measure React Flow']);
+    expect(body.freeSlot.x).toBeGreaterThan(1000);
+  });
+
+  it('narrows to a frame, and refuses an unknown one or a bad depth', async () => {
+    const artifact = await publishBoard();
+    const one = (await (await owner.as(`/api/artifacts/${artifact.id}/canvas/outline?frame=g1&depth=1`)).json()) as any;
+    expect(one.tree).toHaveLength(1);
+    expect(one.tree[0].summary).toBe('Launch plan (2 inside)');
+    expect((await owner.as(`/api/artifacts/${artifact.id}/canvas/outline?frame=n1`)).status).toBe(400);
+    expect((await owner.as(`/api/artifacts/${artifact.id}/canvas/outline?depth=0`)).status).toBe(400);
+  });
+
+  it('follows read access: a stranger gets 404', async () => {
+    const artifact = await publishBoard();
+    expect((await colleague.as(`/api/artifacts/${artifact.id}/canvas/outline`)).status).toBe(404);
+    await share(artifact);
+    expect((await colleague.as(`/api/artifacts/${artifact.id}/canvas/outline`)).status).toBe(200);
+  });
+});
+
+describe('placing and editing through operations', () => {
+  it('places a node beside another with near and side, clear of others', async () => {
+    const artifact = await publishBoard();
+    const response = await ops(owner, artifact, {
+      baseVersion: 1,
+      ops: [{ op: 'add', tempId: 't', near: 'l1', side: 'bottom', node: { text: 'Under the link' } }],
+    });
+    expect(response.status).toBe(200);
+    const id = ((await response.json()) as any).ids.t;
+    const { body } = await readCanvas(owner, artifact);
+    const node = body.nodes.find((n: any) => n.id === id);
+    expect(node).toMatchObject({ x: 700, y: 120 });
+  });
+
+  it('updates an edge label and sides', async () => {
+    const artifact = await publishBoard();
+    const response = await ops(owner, artifact, {
+      baseVersion: 1,
+      ops: [{ op: 'update', id: 'e1', set: { label: 'then', fromSide: 'bottom', toSide: 'top' } }],
+    });
+    expect(response.status).toBe(200);
+    const { body } = await readCanvas(owner, artifact);
+    expect(body.edges[0]).toMatchObject({ label: 'then', fromSide: 'bottom', toSide: 'top' });
+  });
+});

@@ -380,9 +380,27 @@ export type CanvasNodeFields = {
   kite?: CanvasNodeKite;
 };
 
+export type CanvasEdgeFields = {
+  label?: string;
+  color?: string;
+  fromSide?: CanvasSide;
+  toSide?: CanvasSide;
+};
+
 export type CanvasOp =
-  | { op: 'add'; tempId?: string; id?: string; node: CanvasNodeFields; in?: string }
+  | {
+      op: 'add';
+      tempId?: string;
+      id?: string;
+      node: CanvasNodeFields;
+      /** A group to drop the node into. */
+      in?: string;
+      /** A node to sit next to, on `side` (default right). */
+      near?: string;
+      side?: CanvasSide;
+    }
   | { op: 'update'; id: string; set?: CanvasNodeFields; unset?: Array<'color' | 'label'> }
+  | { op: 'update'; id: string; set?: CanvasEdgeFields; unset?: Array<'color' | 'label' | 'fromSide' | 'toSide'> }
   | { op: 'move'; id: string; x: number; y: number }
   | { op: 'resize'; id: string; width: number; height: number }
   | { op: 'delete'; id: string }
@@ -438,12 +456,87 @@ function placeIn(doc: CanvasDocument, group: CanvasGroupNode, size: { width: num
   return { x: group.x + 20, y: bottom + 20, ...size };
 }
 
-/** To the right of everything, so a new node never lands on top of an old one. */
-function placeFree(doc: CanvasDocument) {
+const GAP = 40;
+
+function overlaps(a: Box, b: Box, gap = 0): boolean {
+  return a.x < b.x + b.width + gap && b.x < a.x + a.width + gap && a.y < b.y + b.height + gap && b.y < a.y + a.height + gap;
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * The first spot from `start` that overlaps nothing, stepping along `side`.
+ * Groups only count when the spot would straddle their border, so a node can
+ * still land inside an empty part of a frame it was aimed at.
+ */
+export function findFreeSlot(
+  doc: Pick<CanvasDocument, 'nodes'>,
+  start: { x: number; y: number },
+  size: { width: number; height: number },
+  side: CanvasSide = 'right',
+): { x: number; y: number } {
+  const step = {
+    right: { dx: 1, dy: 0 },
+    left: { dx: -1, dy: 0 },
+    bottom: { dx: 0, dy: 1 },
+    top: { dx: 0, dy: -1 },
+  }[side];
+  let x = Math.round(start.x);
+  let y = Math.round(start.y);
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const box = { x, y, ...size };
+    const hit = doc.nodes.find((n) =>
+      n.type === 'group'
+        ? overlaps(box, n) && !(box.x >= n.x && box.y >= n.y && box.x + box.width <= n.x + n.width && box.y + box.height <= n.y + n.height)
+        : overlaps(box, n, GAP / 2),
+    );
+    if (!hit) return { x, y };
+    if (step.dx > 0) x = hit.x + hit.width + GAP;
+    else if (step.dx < 0) x = hit.x - size.width - GAP;
+    else if (step.dy > 0) y = hit.y + hit.height + GAP;
+    else y = hit.y - size.height - GAP;
+  }
+  return { x, y };
+}
+
+/** Next to `anchor`, on `side`, nudged along until nothing is in the way. */
+function placeNear(doc: CanvasDocument, anchor: CanvasNode, side: CanvasSide, size: { width: number; height: number }) {
+  const start = {
+    right: { x: anchor.x + anchor.width + GAP, y: anchor.y },
+    left: { x: anchor.x - size.width - GAP, y: anchor.y },
+    bottom: { x: anchor.x, y: anchor.y + anchor.height + GAP },
+    top: { x: anchor.x, y: anchor.y - size.height - GAP },
+  }[side];
+  return findFreeSlot(doc, start, size, side);
+}
+
+/**
+ * With no position given: beside the node changed most recently, so a run of
+ * agent adds forms a readable row near where the work is, instead of
+ * drifting off past the far edge of a big canvas.
+ */
+function placeFree(doc: CanvasDocument, size: { width: number; height: number }) {
   if (doc.nodes.length === 0) return { x: 0, y: 0 };
-  const right = Math.max(...doc.nodes.map((n) => n.x + n.width));
-  const top = Math.min(...doc.nodes.map((n) => n.y));
-  return { x: right + 40, y: top };
+  const candidates = doc.nodes.filter((n) => n.type !== 'group');
+  const pool = candidates.length > 0 ? candidates : doc.nodes;
+  let latest = pool[pool.length - 1]!;
+  for (const n of pool) {
+    if ((n.kite?.updatedAt ?? '') > (latest.kite?.updatedAt ?? '')) latest = n;
+  }
+  if (latest.type === 'group') return findFreeSlot(doc, { x: latest.x + latest.width + GAP, y: latest.y }, size, 'right');
+  return placeNear(doc, latest, 'right', size);
+}
+
+/** The smallest group a node sits entirely inside, or null. Ties go to the later (higher) group. */
+export function parentGroupOf(doc: Pick<CanvasDocument, 'nodes'>, node: CanvasNode): CanvasGroupNode | null {
+  let best: CanvasGroupNode | null = null;
+  for (const g of doc.nodes) {
+    if (g.type !== 'group' || g.id === node.id || !isInside(node, g)) continue;
+    // A group never parents a group of the same box, or one containing it.
+    if (node.type === 'group' && g.width * g.height <= node.width * node.height) continue;
+    if (!best || g.width * g.height <= best.width * best.height) best = g;
+  }
+  return best;
 }
 
 /**
@@ -505,14 +598,20 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
             height: fields.height ?? DEFAULT_SIZE[type]?.height ?? 140,
           };
           let place: { x: number; y: number };
+          if (raw.side !== undefined && !SIDES.includes(raw.side as CanvasSide)) {
+            throw new CanvasError('side must be top, right, bottom or left.');
+          }
           if (raw.in !== undefined) {
             const group = doc.nodes[nodeAt(raw.in, index)];
             if (group?.type !== 'group') throw new CanvasError(`"${String(raw.in)}" is not a group.`);
             place = placeIn(doc, group, size);
           } else if (fields.x !== undefined && fields.y !== undefined) {
             place = { x: Math.round(fields.x), y: Math.round(fields.y) };
+          } else if (raw.near !== undefined) {
+            const anchor = doc.nodes[nodeAt(raw.near, index)]!;
+            place = placeNear(doc, anchor, (raw.side as CanvasSide | undefined) ?? 'right', size);
           } else {
-            place = placeFree(doc);
+            place = placeFree(doc, size);
           }
           const id = freshId(raw.id, 'n', index);
           const node = checkNode({
@@ -530,6 +629,29 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
           break;
         }
         case 'update': {
+          const edgeIndex = doc.edges.findIndex((e) => e.id === resolve(raw.id));
+          if (edgeIndex >= 0) {
+            const current = doc.edges[edgeIndex]!;
+            const set = raw.set === undefined ? {} : raw.set;
+            if (!isObject(set)) throw new CanvasError('"set" must be an object.');
+            for (const key of Object.keys(set)) {
+              if (!['label', 'color', 'fromSide', 'toSide'].includes(key)) {
+                throw new CanvasError('An edge can change its label, color, fromSide and toSide. Disconnect it and connect again to change its ends.');
+              }
+            }
+            const next: Record<string, unknown> = { ...current, ...set };
+            const unset = raw.unset ?? [];
+            if (!Array.isArray(unset)) throw new CanvasError('"unset" must be an array.');
+            for (const key of unset) {
+              if (!['label', 'color', 'fromSide', 'toSide'].includes(key)) {
+                throw new CanvasError('An edge can unset label, color, fromSide and toSide.');
+              }
+              delete next[key];
+            }
+            doc.edges[edgeIndex] = checkEdge(next, new Set(doc.nodes.map((n) => n.id)));
+            touched.add(current.id);
+            break;
+          }
           const i = nodeAt(raw.id, index);
           const current = doc.nodes[i]!;
           const set = raw.set === undefined ? {} : raw.set;
@@ -641,4 +763,274 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
   if (doc.nodes.length > CANVAS_LIMITS.maxNodes) throw new CanvasError(`A canvas can hold up to ${CANVAS_LIMITS.maxNodes} nodes.`);
   if (doc.edges.length > CANVAS_LIMITS.maxEdges) throw new CanvasError(`A canvas can hold up to ${CANVAS_LIMITS.maxEdges} edges.`);
   return { doc, ids, touched: [...touched] };
+}
+
+// ---------------------------------------------------------------------------
+// Differences between two versions
+// ---------------------------------------------------------------------------
+
+export interface CanvasNodeChange {
+  id: string;
+  kind: 'added' | 'removed' | 'changed';
+  before?: CanvasNode;
+  after?: CanvasNode;
+  moved: boolean;
+  resized: boolean;
+  /** Text, url, label, colour or what a kite node points at changed. */
+  edited: boolean;
+}
+
+export interface CanvasEdgeChange {
+  id: string;
+  kind: 'added' | 'removed' | 'changed';
+  before?: CanvasEdge;
+  after?: CanvasEdge;
+}
+
+export interface CanvasChanges {
+  nodes: CanvasNodeChange[];
+  edges: CanvasEdgeChange[];
+}
+
+function contentOf(node: CanvasNode): string {
+  const { x: _x, y: _y, width: _w, height: _h, kite, ...rest } = node;
+  const { createdAt: _c, updatedAt: _u, ...k } = kite ?? {};
+  return JSON.stringify({ ...rest, kite: k });
+}
+
+function edgeShape(edge: CanvasEdge): string {
+  const { kite: _k, ...rest } = edge;
+  return JSON.stringify(rest);
+}
+
+/** What changed from one version to the next, node by node. Unchanged things are left out. */
+export function canvasChanges(from: CanvasDocument, to: CanvasDocument): CanvasChanges {
+  const before = new Map(from.nodes.map((n) => [n.id, n]));
+  const after = new Map(to.nodes.map((n) => [n.id, n]));
+  const nodes: CanvasNodeChange[] = [];
+  for (const n of to.nodes) {
+    const old = before.get(n.id);
+    if (!old || old.type !== n.type) {
+      if (old) nodes.push({ id: n.id, kind: 'removed', before: old, moved: false, resized: false, edited: false });
+      nodes.push({ id: n.id, kind: 'added', after: n, moved: false, resized: false, edited: false });
+      continue;
+    }
+    const moved = old.x !== n.x || old.y !== n.y;
+    const resized = old.width !== n.width || old.height !== n.height;
+    const edited = contentOf(old) !== contentOf(n);
+    if (moved || resized || edited) nodes.push({ id: n.id, kind: 'changed', before: old, after: n, moved, resized, edited });
+  }
+  for (const n of from.nodes) {
+    if (!after.has(n.id)) nodes.push({ id: n.id, kind: 'removed', before: n, moved: false, resized: false, edited: false });
+  }
+  const edgesBefore = new Map(from.edges.map((e) => [e.id, e]));
+  const edgesAfter = new Map(to.edges.map((e) => [e.id, e]));
+  const edges: CanvasEdgeChange[] = [];
+  for (const e of to.edges) {
+    const old = edgesBefore.get(e.id);
+    if (!old) edges.push({ id: e.id, kind: 'added', after: e });
+    else if (edgeShape(old) !== edgeShape(e)) edges.push({ id: e.id, kind: 'changed', before: old, after: e });
+  }
+  for (const e of from.edges) if (!edgesAfter.has(e.id)) edges.push({ id: e.id, kind: 'removed', before: e });
+  return { nodes, edges };
+}
+
+function fieldsOf(node: CanvasNode): CanvasNodeFields {
+  const { id: _id, kite, ...rest } = node as CanvasNode & Record<string, unknown>;
+  const { createdAt: _c, updatedAt: _u, ...k } = kite ?? {};
+  return { ...(rest as CanvasNodeFields), ...(Object.keys(k).length > 0 ? { kite: k as CanvasNodeKite } : {}) };
+}
+
+const NODE_CONTENT_KEYS = ['text', 'url', 'label', 'color'] as const;
+const EDGE_KEYS = ['label', 'color', 'fromSide', 'toSide'] as const;
+
+/**
+ * Operations that turn `from` into `to`. Undo sends canvasDiffOps(after, before)
+ * for one action; it only names what that action touched, so anything an agent
+ * changed meanwhile stays as it is.
+ */
+export function canvasDiffOps(from: CanvasDocument, to: CanvasDocument): CanvasOp[] {
+  const changes = canvasChanges(from, to);
+  const ops: CanvasOp[] = [];
+  const target = new Map(to.nodes.map((n) => [n.id, n]));
+  const changedEnds = new Set<string>();
+  for (const c of changes.edges) {
+    if (c.kind === 'changed' && (c.before!.fromNode !== c.after!.fromNode || c.before!.toNode !== c.after!.toNode)) {
+      changedEnds.add(c.id);
+    }
+  }
+  for (const c of changes.edges) {
+    if (c.kind === 'removed' || changedEnds.has(c.id)) ops.push({ op: 'disconnect', id: c.id });
+  }
+  for (const c of changes.nodes) if (c.kind === 'removed') ops.push({ op: 'delete', id: c.id });
+  // Outer groups first, so a group carrying its members never undoes a later, exact move.
+  const moves = changes.nodes
+    .filter((c) => c.kind === 'changed' && c.moved)
+    .sort((a, b) => {
+      const ga = a.after!.type === 'group' ? a.after!.width * a.after!.height : -1;
+      const gb = b.after!.type === 'group' ? b.after!.width * b.after!.height : -1;
+      return gb - ga;
+    });
+  for (const c of moves) ops.push({ op: 'move', id: c.id, x: c.after!.x, y: c.after!.y });
+  for (const c of changes.nodes) {
+    if (c.kind === 'changed' && c.resized) ops.push({ op: 'resize', id: c.id, width: c.after!.width, height: c.after!.height });
+  }
+  for (const c of changes.nodes) {
+    if (c.kind !== 'changed' || !c.edited) continue;
+    const set: CanvasNodeFields = {};
+    const unset: Array<'color' | 'label'> = [];
+    const a = c.after as unknown as Record<string, unknown>;
+    const b = c.before as unknown as Record<string, unknown>;
+    for (const key of NODE_CONTENT_KEYS) {
+      if (a[key] === b[key]) continue;
+      if (a[key] === undefined) {
+        if (key === 'color' || key === 'label') unset.push(key);
+      } else (set as Record<string, unknown>)[key] = a[key];
+    }
+    const ka = fieldsOf(c.after!).kite;
+    if (JSON.stringify(ka ?? {}) !== JSON.stringify(fieldsOf(c.before!).kite ?? {})) set.kite = ka ?? {};
+    ops.push({ op: 'update', id: c.id, ...(Object.keys(set).length ? { set } : {}), ...(unset.length ? { unset } : {}) });
+  }
+  // Adds keep their place in the order, which is the stacking order.
+  for (const c of changes.nodes) if (c.kind === 'added') ops.push({ op: 'add', id: c.id, node: fieldsOf(c.after!) });
+  for (const c of changes.edges) {
+    if (c.kind === 'added' || changedEnds.has(c.id)) {
+      const e = c.after!;
+      ops.push({
+        op: 'connect',
+        id: e.id,
+        from: e.fromNode,
+        to: e.toNode,
+        ...(e.label === undefined ? {} : { label: e.label }),
+        ...(e.fromSide === undefined ? {} : { fromSide: e.fromSide }),
+        ...(e.toSide === undefined ? {} : { toSide: e.toSide }),
+        ...(e.color === undefined ? {} : { color: e.color }),
+      });
+    } else if (c.kind === 'changed') {
+      const set: Record<string, unknown> = {};
+      const unset: string[] = [];
+      for (const key of EDGE_KEYS) {
+        if (c.after![key] === c.before![key]) continue;
+        if (c.after![key] === undefined) unset.push(key);
+        else set[key] = c.after![key];
+      }
+      ops.push({ op: 'update', id: c.id, ...(Object.keys(set).length ? { set } : {}), ...(unset.length ? { unset } : {}) } as CanvasOp);
+    }
+  }
+  if (ops.length === 0) return ops;
+  // A group move carries whatever sat inside it, including nodes that should
+  // stay put. Replay and pin anything that ended up off target.
+  try {
+    let n = 0;
+    const ctx = { now: '1970-01-01T00:00:00.000Z', newId: (p: 'n' | 'e') => `${p}_diff${n++}` };
+    for (let pass = 0; pass < 4; pass++) {
+      const replay = applyCanvasOps(from, ops, ctx).doc;
+      const off = replay.nodes.filter((node) => {
+        const want = target.get(node.id);
+        return want && (want.x !== node.x || want.y !== node.y);
+      });
+      if (off.length === 0) break;
+      // Groups first: pinning a group carries its members, which are pinned after.
+      off.sort((a, b) => Number(b.type === 'group') - Number(a.type === 'group'));
+      for (const node of off) {
+        const want = target.get(node.id)!;
+        ops.push({ op: 'move', id: node.id, x: want.x, y: want.y });
+      }
+    }
+  } catch {
+    // The caller applies these against the live canvas and reports a failure there.
+  }
+  return ops;
+}
+
+// ---------------------------------------------------------------------------
+// Outline: a short map of a canvas for agents
+// ---------------------------------------------------------------------------
+
+export interface CanvasOutlineNode {
+  id: string;
+  type: CanvasNodeType;
+  /** First line of text, the url, the group label, or the kite ref. */
+  summary: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kite?: { kind: string; ref?: string; view?: string };
+  /** Only on groups: what sits directly inside (not inside a nested group). */
+  children?: CanvasOutlineNode[];
+}
+
+export interface CanvasOutline {
+  counts: { nodes: number; edges: number; groups: number };
+  bounds: Box | null;
+  /** Top-level things, with groups nested as a tree. */
+  tree: CanvasOutlineNode[];
+  /** A spot clear of everything, to the right of the content, for a new 260×140 node. */
+  freeSlot: { x: number; y: number };
+}
+
+function summaryOf(node: CanvasNode, max = 80): string {
+  let text: string;
+  if (node.kite?.kind === 'kite' && node.kite.ref) text = `kite ${node.kite.ref}`;
+  else text = nodeText(node).trim().split('\n')[0] ?? '';
+  text = text.replace(/^#+\s*/, '');
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/** Bounds of a set of nodes, or null when there are none. */
+export function canvasBounds(nodes: readonly Box[]): Box | null {
+  if (nodes.length === 0) return null;
+  const x = Math.min(...nodes.map((n) => n.x));
+  const y = Math.min(...nodes.map((n) => n.y));
+  const right = Math.max(...nodes.map((n) => n.x + n.width));
+  const bottom = Math.max(...nodes.map((n) => n.y + n.height));
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+/**
+ * The canvas as a tree of groups, each node one summary line. `frame` limits it
+ * to one group's subtree; `depth` stops nesting after that many levels
+ * (children past it are counted, not listed).
+ */
+export function canvasOutline(doc: CanvasDocument, options: { frame?: string; depth?: number } = {}): CanvasOutline {
+  const parent = new Map<string, string | null>();
+  for (const n of doc.nodes) parent.set(n.id, parentGroupOf(doc, n)?.id ?? null);
+  const kids = new Map<string | null, CanvasNode[]>();
+  for (const n of doc.nodes) {
+    const p = parent.get(n.id) ?? null;
+    kids.set(p, [...(kids.get(p) ?? []), n]);
+  }
+  const maxDepth = options.depth ?? Infinity;
+  const build = (n: CanvasNode, level: number): CanvasOutlineNode => {
+    const item: CanvasOutlineNode = {
+      id: n.id,
+      type: n.type,
+      summary: summaryOf(n),
+      x: n.x,
+      y: n.y,
+      width: n.width,
+      height: n.height,
+      ...(n.kite?.kind ? { kite: { kind: n.kite.kind, ...(n.kite.ref ? { ref: n.kite.ref } : {}), ...(n.kite.view ? { view: n.kite.view } : {}) } } : {}),
+    };
+    if (n.type === 'group') {
+      const inside = kids.get(n.id) ?? [];
+      item.children = level >= maxDepth ? [] : inside.map((c) => build(c, level + 1));
+      if (level >= maxDepth && inside.length > 0) item.summary += ` (${inside.length} inside)`;
+    }
+    return item;
+  };
+  let roots: CanvasNode[];
+  if (options.frame !== undefined) {
+    const frame = doc.nodes.find((n) => n.id === options.frame);
+    if (!frame || frame.type !== 'group') throw new CanvasError(`There is no group "${options.frame}".`);
+    roots = [frame];
+  } else roots = kids.get(null) ?? [];
+  const bounds = canvasBounds(doc.nodes);
+  return {
+    counts: { nodes: doc.nodes.length, edges: doc.edges.length, groups: doc.nodes.filter((n) => n.type === 'group').length },
+    bounds,
+    tree: roots.map((r) => build(r, 1)),
+    freeSlot: bounds ? findFreeSlot(doc, { x: bounds.x + bounds.width + GAP, y: bounds.y }, DEFAULT_SIZE.text) : { x: 0, y: 0 },
+  };
 }

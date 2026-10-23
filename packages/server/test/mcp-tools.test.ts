@@ -489,3 +489,36 @@ describe('connecting and disconnecting an assistant', () => {
     expect(response.status).toBe(401);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Canvas stays off MCP (HTTP API only, by decision)
+// ---------------------------------------------------------------------------
+
+describe('canvas is not on MCP', () => {
+  const board = JSON.stringify({ nodes: [{ id: 'n', type: 'text', x: 0, y: 0, width: 10, height: 10, text: 'Hi' }], edges: [] });
+
+  it('refuses to publish a canvas: the format stays markdown or html', async () => {
+    const result = await call(connectionA.token, 'publish_artifact', { ...TEST_DESCRIBED, content: board, format: 'canvas' });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('"markdown" or "html"');
+  });
+
+  it('lists no canvas tool, and no tool schema offers a canvas format', async () => {
+    const response = await server.request('/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${connectionA.token}` },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+    const body = (await response.json()) as { result: { tools: { name: string; inputSchema: unknown }[] } };
+    for (const tool of body.result.tools) {
+      expect(tool.name).not.toMatch(/canvas/i);
+      expect(JSON.stringify(tool.inputSchema)).not.toMatch(/"canvas"/);
+    }
+  });
+
+  it('cannot overwrite a canvas published over HTTP', async () => {
+    const canvas = await owner.publish({ type: 'canvas', content: board });
+    const result = await call(connectionA.token, 'update_artifact', { artifact_id: canvas.id, content: '# Gone', base_version: 1 });
+    expect(result.isError).toBe(true);
+  });
+});

@@ -8,6 +8,8 @@
  *
  * - GET  /api/artifacts/:id/canvas      the document as a JSON object, with
  *   the version it is, or with every Kite extra removed (`format=jsoncanvas-strict`).
+ * - GET  /api/artifacts/:id/canvas/outline  a short tree of groups and one
+ *   line per node, for an agent to find its way before reading everything.
  * - POST /api/artifacts/:id/canvas/ops  a batch of operations, applied all or
  *   nothing against the version the caller read, written as ONE new version.
  *
@@ -21,6 +23,7 @@ import type { Hono } from 'hono';
 import { newId } from '../../ids.js';
 import {
   applyCanvasOps,
+  canvasOutline,
   CanvasError,
   parseCanvas,
   serialiseCanvas,
@@ -71,6 +74,29 @@ export function registerCanvasRoutes(app: Hono<AppEnv>, context: AppContext): vo
       // which document and version it came from, and the store cannot drift.
       kite: { format: 'kite-canvas', formatVersion: 1, docId: artifact.id, version: artifact.version },
     });
+  });
+
+  app.get('/api/artifacts/:id/canvas/outline', (c) => {
+    const artifact = requireCanvas(artifacts.get(c.req.param('id')));
+    const facts = sharing.accessFactsFor(artifact);
+    requireAccess(c.get('user') ?? null, facts, 'view');
+    const frame = c.req.query('frame') || undefined;
+    const depthRaw = c.req.query('depth');
+    let depth: number | undefined;
+    if (depthRaw !== undefined && depthRaw !== '') {
+      depth = Number(depthRaw);
+      if (!Number.isInteger(depth) || depth < 1) throw new ApiError('validation_failed', 'depth must be a whole number of 1 or more.');
+    }
+    if (c.get('credential') === 'token') recordView(c, context, artifact, facts, 'api');
+    let outline;
+    try {
+      outline = canvasOutline(parseCanvas(artifact.content), { frame, depth });
+    } catch (error) {
+      if (error instanceof CanvasError) throw new ApiError('validation_failed', error.message);
+      throw error;
+    }
+    c.header('X-Artifact-Version', String(artifact.version));
+    return c.json({ docId: artifact.id, version: artifact.version, ...outline });
   });
 
   app.post('/api/artifacts/:id/canvas/ops', requireUser, opsLimit, async (c) => {

@@ -168,7 +168,8 @@ export interface SharedArtifact extends ArtifactSummary {
  */
 export type CommentPositionInput =
   | { headingId: string | null; snippet: string; occurrence: number }
-  | { elementId: string | null; path: string };
+  | { elementId: string | null; path: string }
+  | { nodeId: string };
 
 /** What the server says an element anchor resolves to. */
 export type AnchorPreview =

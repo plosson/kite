@@ -207,6 +207,7 @@ export function Artifact({ slug }: { slug: string }) {
             activeThreadId={conversation.activeThreadId}
             revealCount={conversation.revealCount}
             onNewThread={conversation.reload}
+            onRevealThread={conversation.revealThread}
             canComment={conversation.canComment}
             isArtifactOwner={isOwner}
             // The owner wrote it and already uses this, and somebody already set up
@@ -341,6 +342,7 @@ export function PublicArtifact({
           threads={conversation.threads}
           activeThreadId={conversation.activeThreadId}
           revealCount={conversation.revealCount}
+          onRevealThread={conversation.revealThread}
           canComment={false}
           publishCta
         />
@@ -568,6 +570,7 @@ function Body({
   activeThreadId = null,
   revealCount = 0,
   onNewThread,
+  onRevealThread,
   canComment = false,
   isArtifactOwner = false,
   publishCta = false,
@@ -582,6 +585,7 @@ function Body({
   activeThreadId?: string | null;
   revealCount?: number;
   onNewThread?: () => void;
+  onRevealThread?: (threadId: string) => void;
   canComment?: boolean;
   isArtifactOwner?: boolean;
   /** Show the reader a quiet way to publish their own, at the end. */
@@ -639,7 +643,17 @@ function Body({
       return (
         <div className="flex min-h-0 flex-1 flex-col">
           <Suspense fallback={<div className="p-6"><Spinner /></div>}>
-            <CanvasView artifactId={artifact.id} editable={isArtifactOwner && !editing} />
+            <CanvasView
+              artifactId={artifact.id}
+              editable={isArtifactOwner && !editing}
+              isPublic={artifact.isPublic === 1}
+              canComment={canComment}
+              threads={threads}
+              activeThreadId={activeThreadId}
+              revealCount={revealCount}
+              onNewThread={onNewThread}
+              onRevealThread={onRevealThread}
+            />
           </Suspense>
         </div>
       );
