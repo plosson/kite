@@ -15,6 +15,7 @@ import { readJsonObject, jsonBodyCap } from '../body.js';
 import { requireAccess, canAccess } from '../../artifacts/access.js';
 import type { ArtifactDetail, ArtifactSummary } from '../../artifacts/service.js';
 import { visibleArtifactIds } from '../../workspaces/visible.js';
+import { recordView } from './views.js';
 
 export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): void {
   const { artifacts, sharing, workspaces, config, rateLimiter } = context;
@@ -87,6 +88,11 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
       throw error;
     }
 
+    // This is the read the viewer's page makes when somebody opens a document,
+    // so it is where an open is counted. An agent calling it with its token is
+    // counted as an agent, not a reader.
+    recordView(c, context, artifact, facts, 'browser');
+
     return c.json({
       ...withUrl(artifact, config.baseUrl),
       ownerName: owner?.displayName ?? null,
@@ -107,7 +113,11 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
   /** Read one artifact, including its content. */
   app.get('/api/artifacts/:id', (c) => {
     const artifact = artifacts.get(c.req.param('id'));
-    requireAccess(c.get('user') ?? null, sharing.accessFactsFor(artifact), 'view');
+    const facts = sharing.accessFactsFor(artifact);
+    requireAccess(c.get('user') ?? null, facts, 'view');
+    // Counted only for a command-line client. The web app reads this too, but
+    // only for the editor's source, after the page has already counted the open.
+    if (c.get('credential') === 'token') recordView(c, context, artifact, facts, 'api');
     return c.json(withUrl(artifact, config.baseUrl));
   });
 
@@ -116,11 +126,13 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
     const userId = currentUser(c).id;
     const starred = artifacts.starredArtifactIdsFor(userId);
     const placements = workspaces.placementsFor(userId);
+    const viewCounts = context.views.countsFor(userId);
     return c.json({
       artifacts: artifacts.listOwnedBy(userId).map((artifact) => ({
         ...withUrl(artifact, config.baseUrl),
         starred: starred.has(artifact.id),
         workspaceId: placements.get(artifact.id) ?? INBOX_ID,
+        views: viewCounts.get(artifact.id) ?? NO_VIEWS,
       })),
     });
   });
@@ -224,6 +236,8 @@ export function registerArtifactRoutes(app: Hono<AppEnv>, context: AppContext): 
     return c.json({ starred });
   });
 }
+
+const NO_VIEWS = { views: 0, uniqueViewers: 0, lastViewedAt: null, openedSinceLatestVersion: false };
 
 /** Adds the viewing URL, so no client has to know how to build one. */
 function withUrl<T extends ArtifactSummary | ArtifactDetail>(

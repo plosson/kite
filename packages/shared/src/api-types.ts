@@ -121,6 +121,11 @@ export interface ArtifactSummary {
    * "inbox". Present only on the two listings the web app reads.
    */
   workspaceId?: string;
+  /**
+   * Whether people have opened it. Present only on the owner's own listing
+   * (GET /api/artifacts); nobody else is ever told who read a document.
+   */
+  views?: ArtifactViewCounts;
   createdAt: string;
   updatedAt: string;
 }
@@ -471,3 +476,130 @@ export interface StartThreadRequest {
     occurrence?: number;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Views: who opened a document
+// ---------------------------------------------------------------------------
+
+/**
+ * How somebody got to a document when they opened it. The same words the access
+ * rules use, so a count can be read against the sharing panel.
+ */
+export const VIEW_ACCESS_PATHS = ['owner', 'shared-with-you', 'shared-with-your-domain', 'public'] as const;
+export type ViewAccessPath = (typeof VIEW_ACCESS_PATHS)[number];
+
+/**
+ * What opened it. 'browser' is a person in the web app or a tab. 'api' is a
+ * command-line client with a token, such as agentio. 'mcp' is a connected
+ * assistant. Only browser opens by somebody other than the owner count as
+ * people reading.
+ */
+export const VIEW_CLIENTS = ['browser', 'api', 'mcp'] as const;
+export type ViewClient = (typeof VIEW_CLIENTS)[number];
+
+/** How many minutes repeat opens by the same reader of the same version count as one. */
+export const VIEW_DEDUPE_MINUTES = 30;
+
+/** Who opened it. A signed-out reader is a stable anonymous id, never an address. */
+export type ViewViewer =
+  | { kind: 'user'; email: string; displayName: string | null }
+  | {
+      kind: 'anonymous';
+      /** Stable for one browser on one network, so unique readers can be counted. */
+      id: string;
+    };
+
+/** The few numbers the list shows next to each of your documents. */
+export interface ArtifactViewCounts {
+  /** Opens by people other than you, in a browser. */
+  views: number;
+  /** How many different people (or anonymous browsers) those were. */
+  uniqueViewers: number;
+  /** The last time somebody other than you opened it. Null if nobody has. */
+  lastViewedAt: string | null;
+  /** Whether somebody other than you has opened the current version. */
+  openedSinceLatestVersion: boolean;
+}
+
+export interface ArtifactViewTotals {
+  /** Opens by people other than the owner, in a browser. */
+  views: number;
+  uniqueViewers: number;
+  /** Of those unique viewers, how many were signed out (a public link). */
+  anonymousViewers: number;
+  /** The owner opening their own document. Not counted as reading. */
+  ownerViews: number;
+  /** Reads by command-line clients and connected assistants. Not counted as reading. */
+  agentFetches: number;
+}
+
+/** One person (or anonymous browser) who opened a document. */
+export interface ArtifactViewer {
+  viewer: ViewViewer;
+  access: ViewAccessPath;
+  views: number;
+  firstViewedAt: string;
+  lastViewedAt: string;
+  /** The newest version they have opened. */
+  lastVersion: number;
+}
+
+/** One open, as it happened. */
+export interface ArtifactViewEvent {
+  viewedAt: string;
+  version: number;
+  viewer: ViewViewer;
+  access: ViewAccessPath;
+  client: ViewClient;
+}
+
+/** GET /api/artifacts/:id/views. Owner only. */
+export interface ArtifactViewsResponse {
+  artifactId: string;
+  /** The current version. */
+  version: number;
+  /** When the current version was published. */
+  latestVersionAt: string;
+  /** How far back these numbers go. */
+  retentionDays: number;
+  totals: ArtifactViewTotals;
+  lastViewedAt: string | null;
+  lastViewedVersion: number | null;
+  openedSinceLatestVersion: boolean;
+  /** People other than the owner who opened it in a browser, most recent first. */
+  viewers: ArtifactViewer[];
+  /** Every open, including the owner's and agents', newest first. */
+  recent: ArtifactViewEvent[];
+}
+
+/** One of your documents in the account-level summary. */
+export interface ArtifactViewSummary extends ArtifactViewCounts {
+  artifactId: string;
+  slug: string;
+  title: string;
+  url: string;
+  version: number;
+  latestVersionAt: string;
+  lastViewedVersion: number | null;
+  ownerViews: number;
+  agentFetches: number;
+}
+
+/** GET /api/views. Every document you own, with how it has been read. */
+export interface ViewsSummaryResponse {
+  retentionDays: number;
+  totals: {
+    documents: number;
+    /** Documents somebody other than you has opened at least once. */
+    opened: number;
+    neverOpened: number;
+    /** Documents whose current version nobody other than you has opened. */
+    notOpenedSinceLatestVersion: number;
+    views: number;
+  };
+  artifacts: ArtifactViewSummary[];
+}
+
+/** How many opens GET /api/artifacts/:id/views lists when it does not say, and at most. */
+export const VIEWS_RECENT_DEFAULT_LIMIT = 100;
+export const VIEWS_RECENT_MAX_LIMIT = 500;

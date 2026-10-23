@@ -32,6 +32,7 @@ export function registerLegalRoutes(app: Hono<AppEnv>, context: AppContext): voi
     baseUrl: config.baseUrl,
     contactEmail: config.privacyContactEmail,
     sendsEmail: config.smtp !== null,
+    viewRetentionDays: config.viewRetentionDays,
   });
   const termsMarkdown = termsDoc({
     baseUrl: config.baseUrl,

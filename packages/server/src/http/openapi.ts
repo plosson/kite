@@ -328,6 +328,8 @@ export const API_OPERATIONS: Record<string, Operation> = {
   },
   'GET /api/artifacts': {
     summary: 'Everything you published',
+    description:
+      'Each item carries `views`: how many times people other than you opened it in a browser, how many different people that was, when it was last opened, and whether anybody has opened the current version. Your own opens and agent reads are not in these numbers.',
     auth: 'required',
     responses: { '200': 'Your artifacts, newest change first', '401': 'Not signed in' },
   },
@@ -338,8 +340,29 @@ export const API_OPERATIONS: Record<string, Operation> = {
     auth: 'required',
     responses: { '200': 'The events', '400': 'limit is not a whole number from 1 up', '401': 'Not signed in' },
   },
+  'GET /api/artifacts/:id/views': {
+    summary: 'Who opened one of your documents',
+    description:
+      'Owner only; anybody else gets 404. `totals.views` counts opens in a browser by people other than you, and `totals.uniqueViewers` how many different people that was. A signed-in reader is named by email; a signed-out reader of a public link is an anonymous id, a keyed hash that is never an IP address. Your own opens are `totals.ownerViews`, and reads by command-line clients (a Bearer token, such as agentio) and connected assistants are `totals.agentFetches`; neither counts as a view. The same reader opening the same version again within 30 minutes is one view. `viewers` lists each reader, most recent first, with their count, first and last open and the newest version they opened. `recent` lists every open, newest first, with `client` (`browser`, `api` or `mcp`) and `access` (`owner`, `shared-with-you`, `shared-with-your-domain` or `public`). `openedSinceLatestVersion` says whether anybody other than you has opened the current version. Records older than `retentionDays` are deleted. Optional `limit` for `recent`: 100 by default, at most 500.',
+    auth: 'required',
+    responses: {
+      '200': 'How it has been read',
+      '400': 'limit is not a whole number from 1 up',
+      '401': 'Not signed in',
+      '404': 'No such artifact, or it is not yours',
+    },
+  },
+  'GET /api/views': {
+    summary: 'How each of your documents has been read',
+    description:
+      'Every document you own, newest change first, with the same counts as GET /api/artifacts/:id/views but no per-reader list: views, unique viewers, last viewed, the version last viewed, whether the current version has been opened, your own opens and agent reads. `totals` adds them up across the account, including how many documents were never opened and how many have a current version nobody has opened.',
+    auth: 'required',
+    responses: { '200': 'Your documents and how they have been read', '401': 'Not signed in' },
+  },
   'GET /api/artifacts/:id': {
     summary: 'Read one artifact, with its content',
+    description:
+      'With a Bearer token, the read is recorded as an agent read of the document (see GET /api/artifacts/:id/views). It never counts as a view.',
     auth: 'optional',
     responses: { '200': 'The artifact', '404': 'No such artifact, or you cannot see it' },
   },
@@ -696,14 +719,14 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'GET /api/artifacts/by-slug/:slug': {
     summary: 'Read one artifact by the slug in its URL',
     description:
-      'What the viewer calls: it has a slug from the address bar rather than an id, and needs to know who published it.',
+      'What the viewer calls: it has a slug from the address bar rather than an id, and needs to know who published it. Calling it counts as opening the document (see GET /api/artifacts/:id/views); with a Bearer token it counts as an agent read, not a view.',
     auth: 'optional',
     responses: { '200': 'The artifact', '404': 'No such artifact, or you cannot see it' },
   },
   'GET /a/:slug/content': {
     summary: 'The artifact’s own bytes, for the sandboxed frame',
     description:
-      'Carries its own Content-Security-Policy sandbox directive, so opening this URL directly in a tab is no more powerful than the frame.',
+      'Carries its own Content-Security-Policy sandbox directive, so opening this URL directly in a tab is no more powerful than the frame. Opened directly in a tab (Sec-Fetch-Dest: document), it counts as opening the document.',
     auth: 'optional',
     responses: { '200': 'The content', '404': 'No such artifact, or you cannot see it' },
   },

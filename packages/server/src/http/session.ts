@@ -33,12 +33,18 @@ export function attachUser(auth: AuthService): MiddlewareHandler<AppEnv> {
     const header = c.req.header('authorization');
     if (header?.startsWith('Bearer ')) {
       const user = auth.authenticateApiToken(header.slice('Bearer '.length).trim());
-      if (user) c.set('user', user);
+      if (user) {
+        c.set('user', user);
+        c.set('credential', 'token');
+      }
     } else {
       const cookie = readSessionCookie(c);
       if (cookie) {
         const user = auth.authenticateSession(cookie);
-        if (user) c.set('user', user);
+        if (user) {
+          c.set('user', user);
+          c.set('credential', 'session');
+        }
       }
     }
     await next();

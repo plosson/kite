@@ -35,6 +35,7 @@ import { useStars } from '../stars.jsx';
 import { useRouter, Link } from '../router.jsx';
 import { Button, Badge, RelativeTime, Spinner, Dialog } from '../components/primitives.js';
 import { ShareDialog } from '../components/ShareDialog.js';
+import { ViewsDialog } from '../components/ViewsDialog.js';
 import { ThemeControl } from '../components/ThemeControl.js';
 import {
   CommentsPanel,
@@ -69,6 +70,7 @@ export function Artifact({ slug }: { slug: string }) {
   const { artifact, setArtifact, missing, expired } = useArtifact(slug);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [viewsOpen, setViewsOpen] = useState(false);
   const [commentsCollapsed, toggleComments] = useCommentsCollapsed();
   const [editing, setEditing] = useState(false);
   const [fullSource, setFullSource] = useState(false);
@@ -140,6 +142,10 @@ export function Artifact({ slug }: { slug: string }) {
 
         {isOwner && (
           <>
+            {/* Who opened it: the owner's question, and nobody else's. */}
+            <Button size="sm" tone="ghost" onClick={() => setViewsOpen(true)}>
+              Views
+            </Button>
             <Button size="sm" onClick={() => setSharingOpen(true)}>
               Share
             </Button>
@@ -212,6 +218,7 @@ export function Artifact({ slug }: { slug: string }) {
               )
             }
           />
+          <ViewsDialog artifactId={artifact.id} open={viewsOpen} onClose={() => setViewsOpen(false)} />
           <DeleteDialog
             artifact={artifact}
             open={deleteOpen}

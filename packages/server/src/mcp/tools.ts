@@ -31,6 +31,7 @@ import type { NotificationService } from '../notifications/service.js';
 import type { Mailer } from '../mail/mailer.js';
 import type { RateLimiter, RateLimit } from '../http/rate-limit.js';
 import type { Config } from '../config.js';
+import type { ViewService } from '../views/service.js';
 import type { UserRow, McpConnectionRow } from '../db/schema.js';
 import { ApiError } from '../errors.js';
 import type { WorkspaceService } from '../workspaces/service.js';
@@ -76,6 +77,11 @@ export interface McpToolContext {
   mailer: Mailer;
   rateLimiter: RateLimiter;
   config: Config;
+  /**
+   * Where a read is recorded, as an agent fetch rather than a reader. Optional
+   * so a context built without it, in a test, simply records nothing.
+   */
+  views?: ViewService;
   /** Who this call acts as, and through which connection. */
   user: UserRow;
   connection: McpConnectionRow;
@@ -297,6 +303,11 @@ const getArtifact: McpTool = {
   run(args, ctx) {
     const artifact = requireConnectionArtifact(ctx, requireArgString(args, 'artifact_id'));
     const includeContent = optionalArgBoolean(args, 'include_content') ?? true;
+    // Always the owner, through their assistant: an agent fetch, never a reader.
+    ctx.views?.recordSafely(
+      { artifact, principal: ctx.user, access: 'owner', client: 'mcp', address: '', userAgent: '' },
+      undefined,
+    );
 
     const head =
       `title: ${artifact.title}\n` +

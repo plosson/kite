@@ -6,7 +6,12 @@
  * and a list is how you scan documents.
  */
 
-import { type ArtifactSummary, type SharedArtifact, type WorkspaceSummary } from '../api.js';
+import {
+  type ArtifactSummary,
+  type ArtifactViewCounts,
+  type SharedArtifact,
+  type WorkspaceSummary,
+} from '../api.js';
 import { Link } from '../router.jsx';
 import { useAccount } from '../App.jsx';
 import { Badge, EmptyState, RelativeTime } from '../components/primitives.js';
@@ -127,7 +132,12 @@ export function Home({
               type={artifact.type}
               updatedAt={artifact.updatedAt}
               byline={artifact.ownerId === user.id ? undefined : (artifact.ownerName ?? artifact.ownerEmail ?? undefined)}
-              trailing={artifact.isPublic === 1 ? <Badge tone="accent">Public</Badge> : null}
+              trailing={
+                <>
+                  {artifact.isPublic === 1 && <Badge tone="accent">Public</Badge>}
+                  {artifact.ownerId === user.id && artifact.views && <ViewCount counts={artifact.views} />}
+                </>
+              }
               index={index}
             />
           ))}
@@ -205,6 +215,45 @@ function Row({
         </span>
       </Link>
     </li>
+  );
+}
+
+/**
+ * How many people opened one of my documents. Only my own carry counts, so a
+ * document shared with me shows nothing here. "Unread" means a newer version is
+ * out that nobody has opened, which is the case worth a nudge.
+ */
+function ViewCount({ counts }: { counts: ArtifactViewCounts }) {
+  const label =
+    counts.uniqueViewers === 1 ? '1 person opened this' : `${counts.uniqueViewers} people opened this`;
+  const title = counts.lastViewedAt
+    ? `${label}, ${counts.views} ${counts.views === 1 ? 'view' : 'views'}. Last on ${new Date(counts.lastViewedAt).toLocaleString()}.`
+    : 'Nobody other than you has opened it.';
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-[11.5px] tabular-nums text-ink-3"
+      title={title}
+      aria-label={title}
+      data-testid="view-count"
+    >
+      {counts.views > 0 && !counts.openedSinceLatestVersion && <Badge tone="warn">Unread</Badge>}
+      <EyeIcon />
+      {counts.views}
+    </span>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+      <circle cx="8" cy="8" r="1.75" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
   );
 }
 
