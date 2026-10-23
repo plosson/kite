@@ -29,7 +29,7 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
-## Not released yet
+## 23 October 2026
 
 ### See who opened a document
 
