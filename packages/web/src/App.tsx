@@ -8,6 +8,11 @@
  * The sidebar's contents are loaded here rather than inside the sidebar, because
  * the dashboard shows the same two lists. Loading them once means opening an
  * artifact from the sidebar does not refetch what is already on screen.
+ *
+ * The tab's live connection (live.ts) is opened here too, for the same reason:
+ * the sidebar's bell and the open document share it. It follows the document
+ * by the slug in the address, so it opens while the document itself is still
+ * loading, and nothing said in between is missed.
  */
 
 import { useEffect, useState, useCallback, createContext, useContext } from 'react';
@@ -27,6 +32,7 @@ import { Sessions } from './pages/Sessions.jsx';
 import { NotFound } from './pages/NotFound.jsx';
 import { AppFrame } from './components/Sidebar.jsx';
 import { StarsProvider, useStars } from './stars.jsx';
+import { LiveContext, useLiveConnection, useLiveEvents } from './live.js';
 
 interface Account {
   user: CurrentUser;
@@ -96,16 +102,24 @@ function Shell() {
     },
   };
 
+  // The live connection says when the sign-in stopped working (signed out in
+  // another tab, or the session revoked): the same screen as signing out here,
+  // left where it is, so a public document stays on screen for them.
+  const signedOutElsewhere = () => {
+    setUser(null);
+    setStatus('signed-out');
+  };
+
   return (
     <AccountContext.Provider value={account}>
       <StarsProvider>
-        <SignedIn path={path} />
+        <SignedIn path={path} onSignedOut={signedOutElsewhere} />
       </StarsProvider>
     </AccountContext.Provider>
   );
 }
 
-function SignedIn({ path }: { path: string }) {
+function SignedIn({ path, onSignedOut }: { path: string; onSignedOut: () => void }) {
   const [mine, setMine] = useState<ArtifactSummary[]>([]);
   const [shared, setShared] = useState<SharedArtifact[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
@@ -167,38 +181,44 @@ function SignedIn({ path }: { path: string }) {
   );
 
   const artifactSlug = path.startsWith('/a/') ? decodeURIComponent(path.slice(3)) : null;
+  const live = useLiveConnection(artifactSlug === null ? null : { slug: artifactSlug });
+  useLiveEvents(live, (event) => {
+    if (event.type === 'signed-out') onSignedOut();
+  });
 
   return (
-    <AppFrame
-      data={{
-        mine,
-        shared,
-        workspaces,
-        loading,
-        onMove: move,
-        onWorkspacesChanged: reloadWorkspaces,
-        moveError,
-        onDismissMoveError: () => setMoveError(null),
-      }}
-      focusMode={artifactSlug !== null}
-    >
-      {artifactSlug !== null ? (
-        <Artifact slug={artifactSlug} />
-      ) : path === '/' || path === '/login' ? (
-        <Home
-          mine={mine}
-          shared={shared}
-          workspaces={workspaces}
-          loading={loading}
-          failed={failed}
-          onRetry={load}
-        />
-      ) : path === '/settings/sessions' ? (
-        <Sessions />
-      ) : (
-        <NotFound />
-      )}
-    </AppFrame>
+    <LiveContext.Provider value={live}>
+      <AppFrame
+        data={{
+          mine,
+          shared,
+          workspaces,
+          loading,
+          onMove: move,
+          onWorkspacesChanged: reloadWorkspaces,
+          moveError,
+          onDismissMoveError: () => setMoveError(null),
+        }}
+        focusMode={artifactSlug !== null}
+      >
+        {artifactSlug !== null ? (
+          <Artifact slug={artifactSlug} />
+        ) : path === '/' || path === '/login' ? (
+          <Home
+            mine={mine}
+            shared={shared}
+            workspaces={workspaces}
+            loading={loading}
+            failed={failed}
+            onRetry={load}
+          />
+        ) : path === '/settings/sessions' ? (
+          <Sessions />
+        ) : (
+          <NotFound />
+        )}
+      </AppFrame>
+    </LiveContext.Provider>
   );
 }
 

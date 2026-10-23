@@ -75,3 +75,43 @@ export function bridgeMessageType(value: unknown): string | null {
   if (data.channel !== BRIDGE_CHANNEL) return null;
   return typeof data.type === 'string' ? data.type : null;
 }
+
+// ---------------------------------------------------------------------------
+// Keeping the reader's place
+// ---------------------------------------------------------------------------
+
+/** The place-keeping script's channel. Mirrors `render/frame-position.ts`. */
+export const POSITION_CHANNEL = 'open-artifact.position.v1';
+
+/** Where a frame's document is scrolled to. */
+export interface FramePosition {
+  x: number;
+  y: number;
+}
+
+/** Further than any page scrolls; a number past it is not a position. */
+const FURTHEST = 10_000_000;
+
+/**
+ * A frame saying where it is scrolled to, or null if it is anything else.
+ *
+ * The frame's own script can send this too, and that is fine: all it can do is
+ * say where its own page should be put back to next time, which only that page
+ * is ever told. It is still read strictly, so nothing but two plain numbers in
+ * range is ever stored or sent back.
+ */
+export function readPositionMessage(value: unknown): FramePosition | null {
+  if (!value || typeof value !== 'object') return null;
+  const data = value as Record<string, unknown>;
+  if (data.channel !== POSITION_CHANNEL || data.type !== 'scrolled') return null;
+  const { x, y } = data;
+  if (typeof x !== 'number' || typeof y !== 'number') return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < 0 || y < 0 || x > FURTHEST || y > FURTHEST) return null;
+  return { x, y };
+}
+
+/** What asks a freshly loaded frame to scroll back to where the reader was. */
+export function restoreMessage(position: FramePosition) {
+  return { channel: POSITION_CHANNEL, type: 'restore', x: position.x, y: position.y };
+}

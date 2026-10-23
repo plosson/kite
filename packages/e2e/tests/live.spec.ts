@@ -3,9 +3,10 @@ import { startServer, type RunningServer } from '../src/server.js';
 
 /**
  * Open documents follow changes as they are made: an agent's write, somebody
- * else's edit in another browser, a new comment, a share taken away. Nothing
- * here reloads a page or waits for a clock; each change is made, and the other
- * browser is expected to show it within a short deadline.
+ * else's edit in another browser, a new comment, a share taken away; and the
+ * bell follows what is sent to it. Nothing here reloads a page or waits for a
+ * clock; each change is made, and the other browser is expected to show it
+ * within a short deadline.
  */
 
 let server: RunningServer;
@@ -35,13 +36,22 @@ const json = (body: unknown, method = 'POST'): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-/** A second person, in their own browser context, with the artifact shared with them. */
-async function colleagueOn(browser: Browser, artifactId: string): Promise<Page> {
+/** A second person, signed in in their own browser context. */
+async function colleague(browser: Browser): Promise<Page> {
   const cookie = await server.signInAs('colleague@example.com');
-  await server.as(`/api/artifacts/${artifactId}/sharing/people`, json({ email: 'colleague@example.com' }));
   const context = await browser.newContext();
   await context.addCookies([{ name: 'oa_session', value: cookie.split('=').slice(1).join('='), url: server.baseUrl }]);
   return context.newPage();
+}
+
+const shareWithColleague = (artifactId: string) =>
+  server.as(`/api/artifacts/${artifactId}/sharing/people`, json({ email: 'colleague@example.com' }));
+
+/** The colleague, with the artifact shared with them. */
+async function colleagueOn(browser: Browser, artifactId: string): Promise<Page> {
+  const page = await colleague(browser);
+  await shareWithColleague(artifactId);
+  return page;
 }
 
 async function openLive(page: Page, slug: string) {
@@ -123,6 +133,56 @@ test('an HTML page is shown again when a new version lands', async ({ browser })
 
   await server.update({ id: artifact.id, content: '<!doctype html><p>Version two</p>', baseVersion: 1 });
   await expect(colleague.frameLocator('iframe').first().getByText('Version two')).toBeVisible(PROMPTLY);
+});
+
+test('an HTML page keeps the reader’s place when a new version lands', async ({ browser }) => {
+  const page = (label: string) =>
+    `<!doctype html><body>${Array.from({ length: 120 }, (_, index) => `<p style="height:60px;margin:0">${label} ${index}</p>`).join('')}</body>`;
+  const artifact = await server.publish({ type: 'html', content: page('First') });
+  const reader = await colleagueOn(browser, artifact.id);
+  await openLive(reader, artifact.slug);
+  await expect(reader.frameLocator('iframe').first().getByText('First 0', { exact: true })).toBeVisible();
+
+  // Read down to the middle, as somebody would.
+  const firstFrame = reader.frames().find((frame) => frame.url().includes('/content'))!;
+  await firstFrame.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        window.scrollTo(0, 3_000);
+        // The frame reports at most once an animation frame; let it.
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+
+  await server.update({ id: artifact.id, content: page('Second'), baseVersion: 1 });
+  await expect(reader.frameLocator('iframe').first().getByText('Second 0', { exact: true })).toBeAttached(PROMPTLY);
+
+  // A new document in a new frame, put back where the reader was rather than at the top.
+  const secondFrame = () => reader.frames().find((frame) => frame.url().includes('/content') && frame !== firstFrame);
+  await expect.poll(() => secondFrame()?.evaluate(() => window.scrollY), PROMPTLY).toBe(3_000);
+  await expect(reader.frameLocator('iframe').first().getByText('Second 0', { exact: true })).not.toBeInViewport();
+});
+
+test('a notification lands in the bell the moment it is sent, with no clock running', async ({ browser }) => {
+  const reader = await colleague(browser);
+  // Every timer in the page stopped: nothing can check again later, so
+  // whatever reaches the bell from here on was pushed to it.
+  await reader.clock.install();
+  await reader.goto(`${server.baseUrl}/`);
+  await expect(reader.getByTestId('notifications-live')).toHaveAttribute('data-state', 'live');
+  const bell = reader.getByRole('button', { name: /^Notifications/ });
+  await expect(bell).toHaveAccessibleName('Notifications');
+
+  const first = await server.publish({ type: 'markdown', content: '# Plan\n' });
+  await shareWithColleague(first.id);
+  await expect(bell).toHaveAccessibleName('Notifications, 1 unread', PROMPTLY);
+
+  // With the panel open, its list follows too.
+  await bell.click();
+  const second = await server.publish({ type: 'markdown', content: '# Budget\n', title: 'The budget' });
+  await shareWithColleague(second.id);
+  await expect(bell).toHaveAccessibleName('Notifications, 2 unread', PROMPTLY);
+  await expect(reader.getByText(/The budget/)).toBeVisible(PROMPTLY);
 });
 
 test('a share taken away turns the open page into “not here”', async ({ browser }) => {

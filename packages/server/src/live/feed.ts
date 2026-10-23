@@ -1,7 +1,11 @@
 /**
- * What changed, as it happens: an in-process feed of changes, keyed by artifact.
+ * What changed, as it happens: an in-process feed of changes, by topic.
  *
- * Every write that a reader could see announces itself here once it has been
+ * Two kinds of topic. An artifact's, for everything about one document that a
+ * reader of it could see. A person's, for their notifications: the bell and
+ * the access requests waiting on them.
+ *
+ * Every write that somebody could see announces itself here once it has been
  * committed. The services do the announcing, not the routes, so a new route or
  * a new MCP tool cannot forget to: there is no way to write an artifact or a
  * comment that does not go through a service.
@@ -10,7 +14,8 @@
  * changed it. Never the content. Whoever hears about a change and wants to see
  * it asks for it through the ordinary routes, which check access as they always
  * do. Deciding who may hear about a change at all is the subscriber's job (see
- * routes/events.ts), because that is where the person listening is known.
+ * routes/events.ts), because that is where the person listening is known; a
+ * person's topic is only ever theirs.
  *
  * In-process means one server. Kite runs as one process against one SQLite
  * file, so that is the whole deployment; a second process would need this to
@@ -49,13 +54,39 @@ export type ArtifactChange =
    */
   | { kind: 'access'; artifactId: string };
 
+/**
+ * Somebody's notifications changed: one arrived, was let through, or was read,
+ * or an access request waiting on them came or went. Only the person is named;
+ * what changed is theirs to read through the ordinary routes.
+ */
+export interface NotificationChange {
+  kind: 'notifications';
+  userId: string;
+  /** The tab that caused it, when it was the person themselves: marking read, answering a request. */
+  clientId: string | null;
+}
+
+export type LiveChange = ArtifactChange | NotificationChange;
+
+/** Where a change is announced. One string per thing that can be listened to. */
+export type Topic = `artifact:${string}` | `user:${string}`;
+
+export const topics = {
+  artifact: (artifactId: string): Topic => `artifact:${artifactId}`,
+  user: (userId: string): Topic => `user:${userId}`,
+};
+
+function topicOf(change: LiveChange): Topic {
+  return change.kind === 'notifications' ? topics.user(change.userId) : topics.artifact(change.artifactId);
+}
+
 /** The one thing a service needs: somewhere to announce a committed write. */
 export interface ChangePublisher {
-  publish(change: ArtifactChange): void;
+  publish(change: LiveChange): void;
 }
 
 export interface ChangeListener {
-  change(change: ArtifactChange): void;
+  change(change: LiveChange): void;
   /** The feed is shutting down. Finish up; there will be nothing more. */
   close(): void;
 }
@@ -76,32 +107,32 @@ export const DEFAULT_HEARTBEAT_MS = 25_000;
 export class ChangeFeed implements ChangePublisher {
   readonly heartbeatMs: number;
   private readonly logger: Logger;
-  private readonly listeners = new Map<string, Set<ChangeListener>>();
+  private readonly listeners = new Map<Topic, Set<ChangeListener>>();
 
   constructor({ heartbeatMs = DEFAULT_HEARTBEAT_MS, logger = silentLogger() }: ChangeFeedOptions = {}) {
     this.heartbeatMs = heartbeatMs;
     this.logger = logger;
   }
 
-  /** Starts listening to one artifact. Call what it returns to stop. */
-  subscribe(artifactId: string, listener: ChangeListener): () => void {
-    let set = this.listeners.get(artifactId);
+  /** Starts listening to one topic. Call what it returns to stop. */
+  subscribe(topic: Topic, listener: ChangeListener): () => void {
+    let set = this.listeners.get(topic);
     if (!set) {
       set = new Set();
-      this.listeners.set(artifactId, set);
+      this.listeners.set(topic, set);
     }
     set.add(listener);
 
     return () => {
-      const current = this.listeners.get(artifactId);
+      const current = this.listeners.get(topic);
       if (!current) return;
       current.delete(listener);
-      if (current.size === 0) this.listeners.delete(artifactId);
+      if (current.size === 0) this.listeners.delete(topic);
     };
   }
 
-  publish(change: ArtifactChange): void {
-    const set = this.listeners.get(change.artifactId);
+  publish(change: LiveChange): void {
+    const set = this.listeners.get(topicOf(change));
     if (!set) return;
     // A copy: a listener may unsubscribe while it is being told.
     for (const listener of [...set]) {
@@ -113,9 +144,9 @@ export class ChangeFeed implements ChangePublisher {
     }
   }
 
-  /** How many are listening, to one artifact or to all of them. */
-  listenerCount(artifactId?: string): number {
-    if (artifactId !== undefined) return this.listeners.get(artifactId)?.size ?? 0;
+  /** How many are listening, to one topic or to any. */
+  listenerCount(topic?: Topic): number {
+    if (topic !== undefined) return this.listeners.get(topic)?.size ?? 0;
     let total = 0;
     for (const set of this.listeners.values()) total += set.size;
     return total;

@@ -366,6 +366,12 @@ export class ArtifactService {
   }
 
   /** Null when there is no such artifact, for callers that must not throw. */
+  find(id: string): ArtifactDetail | null {
+    const row = this.db.select().from(artifacts).where(eq(artifacts.id, id)).get();
+    return row ? toDetail(row) : null;
+  }
+
+  /** Null when there is no such artifact, for callers that must not throw. */
   findBySlug(slug: string): ArtifactDetail | null {
     const row = this.db.select().from(artifacts).where(eq(artifacts.slug, slug)).get();
     return row ? toDetail(row) : null;

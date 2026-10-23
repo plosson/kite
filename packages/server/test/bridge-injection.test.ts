@@ -8,14 +8,16 @@ import {
   type PublishedArtifact,
 } from './helpers/server.js';
 import { BRIDGE_CHANNEL } from '../src/comments/bridge.js';
+import { POSITION_CHANNEL } from '../src/render/frame-position.js';
 
 /**
  * Putting the comment bridge into an artifact, and keeping it out of everything
  * else.
  *
  * The rule this file holds: the framed copy of an HTML artifact carries the
- * bridge, and every other way of reading that artifact returns the publisher's
- * bytes and nothing else. That is what keeps "we never modify the publisher's
+ * script that keeps the reader's place and, for a commenter, the bridge, and
+ * every other way of reading that artifact returns the publisher's bytes and
+ * nothing else. That is what keeps "we never modify the publisher's
  * HTML" true where it is checked — a pasted URL, an API read, a download.
  */
 
@@ -77,7 +79,7 @@ describe('every other way of reading the same artifact', () => {
     expect(body).toBe(PAGE);
   });
 
-  it('gives nothing extra to a pasted framed URL from somebody who cannot comment', async () => {
+  it('gives only the place-keeping script, never the bridge, to somebody who cannot comment', async () => {
     // The parameter is guessable. It has to be the access check that decides,
     // not the address.
     const madePublic = await owner.as(`/api/artifacts/${artifact.id}/sharing/public`, {
@@ -89,7 +91,8 @@ describe('every other way of reading the same artifact', () => {
 
     const body = await (await content(stranger, '?frame=1')).text();
 
-    expect(body).toBe(PAGE);
+    expect(body.startsWith(PAGE)).toBe(true);
+    expect(body).toContain(POSITION_CHANNEL);
     expect(body).not.toContain(BRIDGE_CHANNEL);
   });
 
@@ -97,7 +100,9 @@ describe('every other way of reading the same artifact', () => {
     const markdown = await owner.publish({ type: 'markdown', content: '# Plans\n\nA line.\n' });
     const response = await owner.as(`/a/${markdown.slug}/content?frame=1`);
 
-    expect(await response.text()).not.toContain(BRIDGE_CHANNEL);
+    const body = await response.text();
+    expect(body).not.toContain(BRIDGE_CHANNEL);
+    expect(body).not.toContain(POSITION_CHANNEL);
   });
 });
 
@@ -151,5 +156,45 @@ describe('the bridge itself', () => {
     expect(script).not.toContain('appendChild');
     expect(script).not.toContain('surroundContents');
     expect(script).toContain('style.outline');
+  });
+});
+
+describe('the place-keeping script', () => {
+  const script = async () => {
+    const body = await (await content(reader, '?frame=1')).text();
+    const start = body.indexOf(POSITION_CHANNEL);
+    return body.slice(body.lastIndexOf('<script>', start), body.indexOf('</script>', start));
+  };
+
+  it('comes before the bridge, after every byte of the page', async () => {
+    const body = await (await content(reader, '?frame=1')).text();
+
+    expect(body.indexOf(POSITION_CHANNEL)).toBeGreaterThan(PAGE.length - 1);
+    expect(body.indexOf(POSITION_CHANNEL)).toBeLessThan(body.indexOf(BRIDGE_CHANNEL));
+  });
+
+  it('does nothing outside a frame, and listens only to the window that framed it', async () => {
+    const source = await script();
+
+    expect(source).toContain('window.parent === window');
+    expect(source).toContain('event.source !== window.parent');
+  });
+
+  it('says where the page is scrolled to and nothing else', async () => {
+    const source = await script();
+
+    for (const reading of ['textContent', 'innerText', 'innerHTML', 'document.title', 'location']) {
+      expect(source).not.toContain(reading);
+    }
+    expect(source).toContain("type: 'scrolled', x: window.scrollX, y: window.scrollY");
+  });
+
+  it('only ever scrolls the page, to two numbers', async () => {
+    const source = await script();
+
+    expect(source).toContain("typeof data.x !== 'number' || typeof data.y !== 'number'");
+    expect(source).toContain('window.scrollTo(data.x, data.y)');
+    expect(source).not.toContain('createElement');
+    expect(source).not.toContain('appendChild');
   });
 });

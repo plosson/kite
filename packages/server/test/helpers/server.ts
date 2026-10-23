@@ -11,6 +11,7 @@ import { createLogger, type Logger } from '../../src/logging.js';
 import { createMemoryMailer, type MemoryMailer } from '../../src/mail/mailer.js';
 import type { GoogleClient, GoogleIdentity } from '../../src/auth/google.js';
 import { ChangeFeed } from '../../src/live/feed.js';
+import { OpenStreams, streamLimits } from '../../src/live/streams.js';
 
 export const TEST_BASE_URL = 'https://artifacts.test';
 
@@ -24,6 +25,8 @@ export interface TestServer {
   google: FakeGoogleClient;
   /** The live change feed the app announces writes on. */
   changes: ChangeFeed;
+  /** The live streams open now, and their limits. */
+  streams: OpenStreams;
   /** Every line the server logged, as parsed objects. */
   logLines: Record<string, unknown>[];
   request: (path: string, init?: RequestInit) => Promise<Response>;
@@ -70,6 +73,7 @@ export function createTestServer(
   const mailer = createMemoryMailer();
   const google = createFakeGoogleClient();
   const changes = new ChangeFeed({ logger, heartbeatMs: options.heartbeatMs });
+  const streams = new OpenStreams(streamLimits(config.limits));
 
   // API only by default: these tests are about the API, and the app's catch-all
   // route would otherwise answer for anything they did not expect. The tests
@@ -82,6 +86,7 @@ export function createTestServer(
     google,
     serveWebApp: options.serveWebApp ?? false,
     changes,
+    streams,
   });
 
   const request = (path: string, init?: RequestInit) =>
@@ -95,6 +100,7 @@ export function createTestServer(
     mailer,
     google,
     changes,
+    streams,
     logLines,
     request,
     close: () => {

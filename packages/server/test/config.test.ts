@@ -38,6 +38,26 @@ describe('loadConfig', () => {
     expect(config.databasePath).toBe('/var/lib/oa/oa.db');
   });
 
+  it('limits live streams per person, per document and in total, each configurable', () => {
+    expect(loadConfig(MINIMAL).limits).toMatchObject({
+      liveStreamsPerUser: 20,
+      liveStreamsPerArtifact: 250,
+      liveStreams: 2000,
+    });
+    const config = loadConfig({
+      ...MINIMAL,
+      MAX_LIVE_STREAMS_PER_USER: '5',
+      MAX_LIVE_STREAMS_PER_ARTIFACT: '50',
+      MAX_LIVE_STREAMS: '500',
+    });
+    expect(config.limits).toMatchObject({ liveStreamsPerUser: 5, liveStreamsPerArtifact: 50, liveStreams: 500 });
+  });
+
+  it('refuses a live stream limit that would let nobody in, or is not a number', () => {
+    expect(() => loadConfig({ ...MINIMAL, MAX_LIVE_STREAMS_PER_USER: '0' })).toThrow(/MAX_LIVE_STREAMS_PER_USER/);
+    expect(() => loadConfig({ ...MINIMAL, MAX_LIVE_STREAMS: 'lots' })).toThrow(/MAX_LIVE_STREAMS/);
+  });
+
   it('names every missing required variable in one readable message', () => {
     let error: unknown;
     try {

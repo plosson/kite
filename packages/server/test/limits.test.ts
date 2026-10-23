@@ -300,6 +300,9 @@ describe('the limits an operator can change', () => {
       canvasOpsPerHour: 600,
       authRequestsPerHour: 20,
       sharesPerHour: 30,
+      liveStreamsPerUser: 20,
+      liveStreamsPerArtifact: 250,
+      liveStreams: 2000,
     });
   });
 });

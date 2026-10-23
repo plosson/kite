@@ -69,6 +69,31 @@ as new. A dot in the bar says "Live". When the connection drops, it says
 "Reconnecting", and the page catches up when it is back. When the owner
 removes your access, the page tells you that the document is not there.
 
+When a new version of an HTML document arrives, the page stays where you
+were reading. It does not go back to the top.
+
+### See notifications as they arrive
+
+> **As a reader,** I want the bell to show a new notification at once,
+> **so that** I can answer a colleague without waiting.
+
+The bell count changes when the notification arrives. If the panel is open,
+the new notification appears in the list. A dot next to the bell shows that
+the bell is live. When you read a notification in one tab, the count changes
+in your other tabs too.
+
+### Limits on open tabs
+
+> **As an operator,** I want to limit how many live connections are open,
+> **so that** one person cannot use all of the server.
+
+Each open tab uses one live connection. Three settings limit them: per
+person (`MAX_LIVE_STREAMS_PER_USER`, 20), per document
+(`MAX_LIVE_STREAMS_PER_ARTIFACT`, 250) and in total (`MAX_LIVE_STREAMS`,
+2000). When a person opens too many tabs, their oldest tab stops. That tab
+says "Paused" and starts again when you go back to it. When a document or the
+server is full, a new tab waits and tries again later.
+
 ### Comment on a node
 
 > **As a reader,** I want to comment on one card of a canvas,

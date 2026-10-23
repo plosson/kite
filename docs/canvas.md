@@ -101,13 +101,15 @@ small dot in the bar says **Live** while the page is following, and
 **Reconnecting** when the connection dropped; when it is back, the page
 catches up on whatever it missed.
 
-The page listens on `GET /api/artifacts/:id/events`, a stream of server-sent
-events that says what kind of thing changed and the version it is now at,
-never the content. Anybody who may read the canvas may listen, and that is
-checked again on every change and every 25-second heartbeat, so removing a
-share or letting a link expire ends the stream too. The same stream keeps the
-comments, the title and description, and Markdown and HTML documents up to
-date.
+Each tab listens on one stream, `GET /api/events?slug=…` (or `?artifact=…`),
+of server-sent events that say what kind of thing changed and the version it
+is now at, never the content. Anybody who may read the canvas may listen, and
+that is checked again on every change and every 25-second heartbeat, so
+removing a share or letting a link expire stops the stream following the
+document too. The same stream keeps the comments, the title and description,
+and Markdown and HTML documents up to date, and carries the signed-in
+person's unread count to the bell. An HTML document keeps the reader's place
+when a new version arrives.
 
 Large canvases stay fast by drawing less: nodes off screen are not drawn;
 zoomed out, cards become boxes, labels go, and on canvases with more than 300

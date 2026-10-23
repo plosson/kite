@@ -47,6 +47,7 @@ import { createGoogleClient, type GoogleClient } from '../auth/google.js';
 import { attachUser } from './session.js';
 import { createRateLimiter, type RateLimiter } from './rate-limit.js';
 import { ChangeFeed } from '../live/feed.js';
+import { OpenStreams, streamLimits } from '../live/streams.js';
 import type { UserRow } from '../db/schema.js';
 
 export interface AppDependencies {
@@ -67,6 +68,8 @@ export interface AppDependencies {
    * own so that stopping the server can close every open stream first.
    */
   changes?: ChangeFeed;
+  /** Every open live stream. Made here, with the configured limits, when left out. */
+  streams?: OpenStreams;
 }
 
 export interface AppContext {
@@ -83,6 +86,8 @@ export interface AppContext {
   rateLimiter: RateLimiter;
   views: ViewService;
   changes: ChangeFeed;
+  /** Every live stream open now, and how many may be. */
+  streams: OpenStreams;
   mailer: Mailer;
   google: GoogleClient;
   logger: Logger;
@@ -118,12 +123,13 @@ export function createApp({
   google = config.google ? createGoogleClient(config.google) : unconfiguredGoogleClient(),
   serveWebApp = true,
   changes = new ChangeFeed({ logger }),
+  streams = new OpenStreams(streamLimits(config.limits)),
 }: AppDependencies): Hono<AppEnv> {
   const sharing = new SharingService(database.db, changes);
   const comments = new CommentService(database.db, changes);
   // Notifications can share, because the owner tagging somebody new in a
   // comment grants them access in the same breath.
-  const notifications = new NotificationService(database.db, sharing);
+  const notifications = new NotificationService(database.db, changes, sharing);
 
   const auth = new AuthService({
     db: database.db,
@@ -148,6 +154,7 @@ export function createApp({
     mailer,
     google,
     changes,
+    streams,
     artifacts: new ArtifactService({
       db: database.db,
       anchors: comments,

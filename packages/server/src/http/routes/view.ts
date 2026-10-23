@@ -30,6 +30,7 @@ import type { AppContext, AppEnv } from '../app.js';
 import { renderMarkdown } from '../../render/markdown.js';
 import { requireAccess, canAccess } from '../../artifacts/access.js';
 import { BRIDGE_SCRIPT } from '../../comments/bridge.js';
+import { POSITION_SCRIPT } from '../../render/frame-position.js';
 import { recordView } from './views.js';
 import { versionNumber } from './versions.js';
 
@@ -144,19 +145,22 @@ export function registerViewRoutes(app: Hono<AppEnv>, context: AppContext): void
     // risk is only someone who pastes this content URL straight into a tab, where
     // there is no frame, and then clicks a link. That case is not covered here.
 
-    // The framed copy carries the comment bridge. Everything else — a pasted
-    // URL, an API read, a download — is the publisher's bytes and nothing else,
-    // which is what keeps "we do not modify HTML" true everywhere it is checked.
-    const mayComment = canAccess(c.get('user') ?? null, sharing.accessFactsFor(artifact), 'comment');
-
-    // Comments belong to the current version, so a past one never carries the bridge.
-    if (c.req.query('frame') === '1' && mayComment && !pastVersion) {
+    // The framed copy, which is what the app puts on the page, carries the
+    // script that keeps the reader's place across versions, and for somebody
+    // who may comment, the comment bridge. Everything else — a pasted URL, an
+    // API read, a download — is the publisher's bytes and nothing else, which
+    // is what keeps "we do not modify HTML" true everywhere it is checked.
+    //
+    // A past version is never framed live, so it carries neither.
+    if (c.req.query('frame') === '1' && !pastVersion) {
+      const mayComment = canAccess(c.get('user') ?? null, sharing.accessFactsFor(artifact), 'comment');
       // Appended, never inserted. Appending cannot move the doctype, cannot drop
       // the page into quirks mode, and cannot disturb a byte the publisher wrote.
       // A page whose last bytes sit inside an unterminated script or comment
-      // swallows the bridge, and commenting on that page quietly does not work —
-      // which is the right way for this to fail.
-      return c.body(`${artifact.content}\n${BRIDGE_SCRIPT}\n`, 200, {
+      // swallows what follows, and the extras quietly do not work — which is
+      // the right way for this to fail.
+      const appended = mayComment ? `${POSITION_SCRIPT}\n${BRIDGE_SCRIPT}` : POSITION_SCRIPT;
+      return c.body(`${artifact.content}\n${appended}\n`, 200, {
         'Content-Type': 'text/html; charset=utf-8',
       });
     }

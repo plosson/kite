@@ -412,16 +412,16 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '429': 'Too many batches this hour',
     },
   },
-  'GET /api/artifacts/:id/events': {
-    summary: 'Hear about changes to a document as they happen',
+  'GET /api/events': {
+    summary: 'Hear about your notifications, and changes to a document, as they happen',
     description:
-      'A stream of server-sent events (`text/event-stream`) that stays open. Anybody who may read the document may listen, and that is checked again on every change and every heartbeat, against the current sharing and the current state of your session or token: a listener who can no longer read it (a share removed, signed out, the link expired) is told why and the stream ends. Events never carry content; fetch what changed through the ordinary routes. `ready` {version} comes first on every connection, so a reconnecting client can catch up. `change` {kind, version?, via, self} follows each write: `kind` is `content` (a new version: publish, update, canvas operations, restore), `details` (title, description or summary) or `comments`; `via` is `browser` or `agent`; `self` is true when the change was made by the tab that sent the same `X-Kite-Client` header here and on its write. `gone` {reason: deleted | expired | no-access} comes last, after which the stream closes and reconnecting is pointless. A `: ping` comment every 25 seconds keeps idle connections open through proxies. Optional `X-Kite-Client` header: 8 to 64 letters, digits, `-` or `_`.',
+      'A stream of server-sent events (`text/event-stream`) that stays open: one per browser tab. It carries your notifications whenever you are signed in, and one document\'s changes when you name it with `?artifact=<id>` or `?slug=<slug>` (not both). Without a document it needs you signed in. Events never carry content; fetch what changed through the ordinary routes. `ready` {version?, unread?} comes first on every connection, so a reconnecting client can catch up: `version` when the document is followed, `unread` when you are signed in. `change` {kind, version?, via, self} follows each write to the document: `kind` is `content` (a new version: publish, update, canvas operations, restore), `details` (title, description or summary) or `comments`; `via` is `browser` or `agent`. `notifications` {unread, self} follows anything that changes your bell or the access requests waiting on you. `self` is true when the change was made by the tab that sent the same `X-Kite-Client` header here and on its write. Following the document is checked like reading it, at the start and again on every change and every heartbeat, against the current sharing and the current state of your session or token: when you cannot read it (never could, a share removed, signed out, the link expired, deleted) `gone` {reason: deleted | expired | no-access} says so and the document is no longer followed; "no such document" and "not yours" are the same answer. `signed-out` says your session or token stopped working and your notifications are no longer followed. The stream ends when nothing is left to follow. `replaced` comes last when you opened more streams than this instance allows one person (`MAX_LIVE_STREAMS_PER_USER`): your oldest is closed to make room, and should not reconnect by itself. A `: ping` comment every 25 seconds keeps idle connections open through proxies. Optional `X-Kite-Client` header: 8 to 64 letters, digits, `-` or `_`.',
     auth: 'optional',
     responses: {
       '200': 'The stream',
-      '400': 'A malformed client id',
-      '404': 'No such artifact, or you may not read it',
-      '410': 'The link has expired',
+      '400': 'A malformed client id, or both artifact and slug',
+      '401': 'Not signed in, and no document named',
+      '429': 'Too many streams on this document, or on this instance; see Retry-After',
     },
   },
   'GET /api/views': {

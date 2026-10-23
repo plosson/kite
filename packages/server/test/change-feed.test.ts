@@ -1,19 +1,19 @@
 /** The in-process feed on its own: who hears what, and nothing left behind. */
 
 import { describe, it, expect } from 'vitest';
-import { ChangeFeed, type ArtifactChange, type ChangeListener } from '../src/live/feed.js';
+import { ChangeFeed, topics, type LiveChange, type ChangeListener } from '../src/live/feed.js';
 import { createLogger } from '../src/logging.js';
 
 const actor = { userId: 'usr_1', via: 'browser' as const, clientId: null };
-const content = (artifactId: string, version: number): ArtifactChange => ({
+const content = (artifactId: string, version: number): LiveChange => ({
   kind: 'content',
   artifactId,
   version,
   actor,
 });
 
-function recorder(): ChangeListener & { heard: ArtifactChange[]; closed: number } {
-  const heard: ArtifactChange[] = [];
+function recorder(): ChangeListener & { heard: LiveChange[]; closed: number } {
+  const heard: LiveChange[] = [];
   return {
     heard,
     closed: 0,
@@ -32,9 +32,9 @@ describe('the change feed', () => {
     const a1 = recorder();
     const a2 = recorder();
     const b = recorder();
-    feed.subscribe('art_a', a1);
-    feed.subscribe('art_a', a2);
-    feed.subscribe('art_b', b);
+    feed.subscribe(topics.artifact('art_a'), a1);
+    feed.subscribe(topics.artifact('art_a'), a2);
+    feed.subscribe(topics.artifact('art_b'), b);
 
     feed.publish(content('art_a', 2));
 
@@ -43,15 +43,33 @@ describe('the change feed', () => {
     expect(b.heard).toEqual([]);
   });
 
+  it('tells a person about their notifications and nobody else, and keeps them apart from documents', () => {
+    const feed = new ChangeFeed();
+    const alice = recorder();
+    const bob = recorder();
+    const sameIdDocument = recorder();
+    feed.subscribe(topics.user('usr_alice'), alice);
+    feed.subscribe(topics.user('usr_bob'), bob);
+    // A document whose id happened to be a person's id still hears nothing of theirs.
+    feed.subscribe(topics.artifact('usr_alice'), sameIdDocument);
+
+    const changed: LiveChange = { kind: 'notifications', userId: 'usr_alice', clientId: null };
+    feed.publish(changed);
+
+    expect(alice.heard).toEqual([changed]);
+    expect(bob.heard).toEqual([]);
+    expect(sameIdDocument.heard).toEqual([]);
+  });
+
   it('forgets an artifact entirely once its last listener leaves', () => {
     const feed = new ChangeFeed();
-    const stopA = feed.subscribe('art_a', recorder());
-    const stopB = feed.subscribe('art_a', recorder());
-    expect(feed.listenerCount('art_a')).toBe(2);
+    const stopA = feed.subscribe(topics.artifact('art_a'), recorder());
+    const stopB = feed.subscribe(topics.artifact('art_a'), recorder());
+    expect(feed.listenerCount(topics.artifact('art_a'))).toBe(2);
 
     stopA();
     stopA();
-    expect(feed.listenerCount('art_a')).toBe(1);
+    expect(feed.listenerCount(topics.artifact('art_a'))).toBe(1);
     stopB();
     expect(feed.listenerCount()).toBe(0);
   });
@@ -60,13 +78,13 @@ describe('the change feed', () => {
     const lines: string[] = [];
     const feed = new ChangeFeed({ logger: createLogger({ level: 'error', write: (line) => lines.push(line) }) });
     const after = recorder();
-    feed.subscribe('art_a', {
+    feed.subscribe(topics.artifact('art_a'), {
       change: () => {
         throw new Error('boom');
       },
       close: () => {},
     });
-    feed.subscribe('art_a', after);
+    feed.subscribe(topics.artifact('art_a'), after);
 
     expect(() => feed.publish(content('art_a', 2))).not.toThrow();
     expect(after.heard).toHaveLength(1);
@@ -76,21 +94,21 @@ describe('the change feed', () => {
   it('lets a listener leave while it is being told', () => {
     const feed = new ChangeFeed();
     const second = recorder();
-    const stop = feed.subscribe('art_a', { change: () => stop(), close: () => {} });
-    feed.subscribe('art_a', second);
+    const stop = feed.subscribe(topics.artifact('art_a'), { change: () => stop(), close: () => {} });
+    feed.subscribe(topics.artifact('art_a'), second);
 
     feed.publish(content('art_a', 2));
 
     expect(second.heard).toHaveLength(1);
-    expect(feed.listenerCount('art_a')).toBe(1);
+    expect(feed.listenerCount(topics.artifact('art_a'))).toBe(1);
   });
 
   it('closes every listener once when it shuts down', () => {
     const feed = new ChangeFeed();
     const one = recorder();
     const two = recorder();
-    feed.subscribe('art_a', one);
-    feed.subscribe('art_b', two);
+    feed.subscribe(topics.artifact('art_a'), one);
+    feed.subscribe(topics.artifact('art_b'), two);
 
     feed.close();
     feed.publish(content('art_a', 2));
