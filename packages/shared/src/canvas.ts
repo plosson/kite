@@ -970,6 +970,11 @@ export interface CanvasOutline {
   freeSlot: { x: number; y: number };
 }
 
+/** One line saying what a node is: its text, address, label or the document it shows. */
+export function canvasNodeSummary(node: CanvasNode, max = 80): string {
+  return summaryOf(node, max);
+}
+
 function summaryOf(node: CanvasNode, max = 80): string {
   let text: string;
   if (node.kite?.kind === 'kite' && node.kite.ref) text = `kite ${node.kite.ref}`;

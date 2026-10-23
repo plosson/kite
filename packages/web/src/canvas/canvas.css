@@ -31,3 +31,27 @@
 .kite-canvas .kite-prose h1 { font-size: 1.35em; }
 .kite-canvas .kite-prose h2 { font-size: 1.2em; }
 .kite-canvas .kite-prose h3 { font-size: 1.05em; }
+
+/* History's Changes, drawn on the canvas. */
+.kite-canvas .react-flow__node.kite-mark-added > div {
+  outline: 2px solid #30a46c;
+  outline-offset: 2px;
+}
+.kite-canvas .react-flow__node.kite-mark-changed > div {
+  outline: 2px dashed #f76b15;
+  outline-offset: 2px;
+}
+.kite-canvas .react-flow__node.kite-mark-removed {
+  opacity: 0.45;
+}
+.kite-canvas .react-flow__node.kite-mark-removed > div {
+  outline: 2px dashed #e5484d;
+  outline-offset: 2px;
+}
+.kite-canvas .react-flow__edge.kite-mark-added path {
+  stroke: #30a46c !important;
+}
+.kite-canvas .react-flow__edge.kite-mark-removed path {
+  stroke: #e5484d !important;
+  stroke-dasharray: 6 4;
+}

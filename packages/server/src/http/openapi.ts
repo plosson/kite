@@ -315,7 +315,7 @@ export const API_OPERATIONS: Record<string, Operation> = {
   'POST /api/artifacts': {
     summary: 'Publish an artifact',
     description:
-      'Markdown or HTML. The artifact belongs to whoever published it. Optional `workspaceId` (a workspace id or name, or "inbox") places it in one of your workspaces; an unknown one refuses the publish. ' +
+      'Markdown, HTML or a canvas (`type: "canvas"`, content a JSON Canvas 1.0 document). The artifact belongs to whoever published it. Optional `workspaceId` (a workspace id or name, or "inbox") places it in one of your workspaces; an unknown one refuses the publish. ' +
       `Required \`description\`: ${ARTIFACT_DESCRIPTION_GUIDANCE} Required \`summary\`: ${ARTIFACT_SUMMARY_GUIDANCE}`,
     auth: 'required',
     responses: {

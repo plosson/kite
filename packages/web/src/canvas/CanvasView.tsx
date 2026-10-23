@@ -56,6 +56,7 @@ import { Composer } from '../components/Comments.js';
 import { createOpsQueue } from './ops-queue.js';
 import { applyBestEffort, createEditorState, localId } from './editor-state.js';
 import { edgeSides, flowNodes, isBigCanvas, linkHref, LOD } from './to-flow.js';
+import type { CanvasMark } from './history.js';
 
 type CanvasPayload = CanvasDocument & { kite: { version: number; docId: string } };
 
@@ -434,7 +435,10 @@ export interface CanvasViewProps {
   onRevealThread?: (threadId: string) => void;
   /** For a past version: shown as it was, nothing editable, nothing saved. */
   fixed?: CanvasDocument;
+  /** For History's Changes: what happened to each node or edge, drawn on it. */
+  marks?: Record<string, CanvasMark>;
 }
+
 
 export default function CanvasView(props: CanvasViewProps) {
   return (
@@ -445,18 +449,21 @@ export default function CanvasView(props: CanvasViewProps) {
 }
 
 const POLL_MS = 10_000;
+/** One empty list for every render, so a canvas shown without comments does not rebuild itself forever. */
+const NO_THREADS: CommentThread[] = [];
 
 function CanvasInner({
   artifactId,
   editable: editableProp,
   isPublic = false,
   canComment = false,
-  threads = [],
+  threads = NO_THREADS,
   activeThreadId = null,
   revealCount = 0,
   onNewThread,
   onRevealThread,
   fixed,
+  marks,
 }: CanvasViewProps) {
   const editable = editableProp && !fixed;
   const flow = useReactFlow<KiteNode, Edge>();
@@ -642,7 +649,9 @@ function CanvasInner({
       style: { width: shape.node.width, height: shape.node.height },
       draggable: editable,
       connectable: editable,
-      ...(activeNodeId === shape.id ? { className: 'kite-highlighted' } : {}),
+      ...(activeNodeId === shape.id || marks?.[shape.id]
+        ? { className: [activeNodeId === shape.id ? 'kite-highlighted' : '', marks?.[shape.id] ? `kite-mark-${marks[shape.id]}` : ''].join(' ').trim() }
+        : {}),
       data: {
         node: shape.node,
         editable,
@@ -665,13 +674,14 @@ function CanvasInner({
         label: showLabels ? edge.label : undefined,
         // On a big canvas zoomed out, edges are the dearest thing to draw and nobody can follow them.
         hidden: big && far,
+        ...(marks?.[edge.id] ? { className: `kite-mark-${marks[edge.id]}` } : {}),
         style: colour ? { stroke: colour } : undefined,
         markerEnd: edge.toEnd === 'none' ? undefined : { type: MarkerType.ArrowClosed, ...(colour ? { color: colour } : {}) },
         markerStart: edge.fromEnd === 'arrow' ? { type: MarkerType.ArrowClosed } : undefined,
       };
     });
     return { nodes, edges };
-  }, [local, editable, isPublic, markers, autoEdit, actions, showLabels, big, far, activeNodeId]);
+  }, [local, editable, isPublic, markers, autoEdit, actions, showLabels, big, far, activeNodeId, marks]);
 
   const [nodes, setNodes] = useState<KiteNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);

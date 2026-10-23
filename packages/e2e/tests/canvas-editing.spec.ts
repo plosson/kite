@@ -211,6 +211,9 @@ test('comments on a node, marks it, and shows when the node changed or went', as
   await expect(marker).toHaveText('1');
   await expect(marker).toHaveAttribute('data-drifted', 'false');
   await expect(page.getByText('Is this in scope?')).toBeVisible();
+  // The thread in the sidebar takes the reader back to its card.
+  await page.getByTitle('Show where this is').click();
+  await expect(node(page, 'n3')).toHaveClass(/kite-highlighted/);
 
   // The agent rewrites the node: the comment stays, flagged as drifted.
   let version = (await readCanvas(artifact.id)).kite.version;
@@ -231,4 +234,53 @@ test('comments on a node, marks it, and shows when the node changed or went', as
   });
   await page.reload();
   await expect(page.getByTestId('canvas-lost-comments')).toHaveText('1 comment lost its node');
+});
+
+test('History draws old versions as a canvas, shows what changed on it, and restores one', async ({ page, context }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const artifact = await open(page, context);
+  await server.as(`/api/artifacts/${artifact.id}/canvas/ops`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      baseVersion: 1,
+      ops: [
+        { op: 'update', id: 'n2', set: { text: 'Measured' } },
+        { op: 'delete', id: 'n3' },
+        { op: 'add', id: 'n4', node: { type: 'text', text: 'From the agent', x: 900, y: 400, width: 200, height: 80 } },
+      ],
+    }),
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await page.getByTestId('history-panel').getByRole('button', { name: /v2/ }).click();
+
+  // v2, drawn as a canvas, read-only.
+  const drawn = page.getByTestId('version-document');
+  await expect(drawn.locator('.react-flow__node[data-id="n4"]')).toContainText('From the agent');
+  await expect(page.getByTestId('canvas-toolbar')).toHaveCount(0);
+
+  // Changes, drawn on the canvas and listed.
+  await page.getByRole('button', { name: 'Changes' }).click();
+  await expect(page.getByTestId('version-changes-summary')).toHaveText('From version 1 to 2: 1 added, 1 removed, 1 edited.');
+  const changes = page.getByTestId('version-changes-canvas');
+  await expect(changes.locator('.react-flow__node[data-id="n3"]')).toHaveClass(/kite-mark-removed/);
+  await expect(changes.locator('.react-flow__node[data-id="n4"]')).toHaveClass(/kite-mark-added/);
+  await expect(changes.locator('.react-flow__node[data-id="n2"]')).toHaveClass(/kite-mark-changed/);
+  await expect(changes.locator('.react-flow__node[data-id="n1"]')).not.toHaveClass(/kite-mark/);
+  await expect(page.getByTestId('version-changes-list').locator('li')).toHaveCount(3);
+
+  // Restore v1: one new version, the canvas as it was.
+  await page.getByRole('button', { name: 'All versions' }).click();
+  await page.getByTestId('history-panel').getByRole('button', { name: /v1/ }).click();
+  await page.getByRole('button', { name: 'Restore this version' }).click();
+  await page.getByTestId('restore-confirm').getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByTestId('version-banner')).toHaveCount(0);
+  const doc = await readCanvas(artifact.id);
+  expect(doc.kite.version).toBe(3);
+  expect(doc.nodes.map((n) => n.id).sort()).toEqual(['g1', 'n1', 'n2', 'n3']);
+  expect(doc.nodes.find((n) => n.id === 'n2')?.text).toBe('Measure React Flow');
+  await expect(page.getByTestId('canvas-view').getByText('Loose card')).toBeVisible();
+  expect(errors).toEqual([]);
 });

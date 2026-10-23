@@ -29,6 +29,65 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
+## Unreleased
+
+### Edit a canvas in the browser
+
+> **As an author,** I want to change my canvas on the page,
+> **so that** I do not need an agent for small changes.
+
+Open a canvas that you own. A toolbar is at the top left. Use it to add text,
+links, Kite documents and groups. Drag a node to move it. Drag a group, and
+the nodes inside it move with it. Drag a corner to resize a node. Drag from a
+side of a node to another node to connect them. Double-click a line to label
+it or to remove it. Press Delete to remove what you selected.
+
+Press Ctrl+Z (Cmd+Z on a Mac) to undo. Undo takes back only your own change.
+If an agent changed the same thing after you, Kite tells you and does not
+undo.
+
+### See what your agent adds
+
+> **As an author,** I want to see the nodes that my agent adds,
+> **so that** I do not need to search for them.
+
+Your agent can now ask Kite to put a node next to another node. If it does
+not ask, Kite puts the node next to the last thing that changed. When new
+nodes arrive while you look at the canvas, Kite shows "1 new node · Show".
+Click Show to go to them.
+
+### Comment on a node
+
+> **As a reader,** I want to comment on one card of a canvas,
+> **so that** my comment is about that card.
+
+Select a node and click Comment. A marker on the node shows the number of
+comments. The marker turns orange when the node changes after the comment.
+When the node is deleted, the canvas tells you that the comment lost its
+node.
+
+### See and restore old versions of a canvas
+
+> **As an author,** I want to see an old version of my canvas as a canvas,
+> **so that** I can see what it looked like.
+
+In History, an old version of a canvas now shows as a canvas. Click Changes
+to see what changed: new nodes are green, changed nodes are orange and
+removed nodes are faded red. Click "Restore this version" to make the old
+version current again. Kite saves this as a new version, so you lose
+nothing.
+
+### Large canvases stay fast
+
+> **As an author,** I want a canvas with thousands of nodes to move smoothly,
+> **so that** I can work on a large map.
+
+Kite does not draw nodes that are off the screen. When you zoom out, cards
+become simple boxes and labels go. On large canvases, lines go too. A large
+canvas opens close enough that only part of it is drawn.
+
+---
+
 ## 23 October 2026 (1.3.0)
 
 ### See every version of a document
