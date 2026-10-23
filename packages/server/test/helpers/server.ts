@@ -10,6 +10,7 @@ import { createApp, type AppEnv } from '../../src/http/app.js';
 import { createLogger, type Logger } from '../../src/logging.js';
 import { createMemoryMailer, type MemoryMailer } from '../../src/mail/mailer.js';
 import type { GoogleClient, GoogleIdentity } from '../../src/auth/google.js';
+import { ChangeFeed } from '../../src/live/feed.js';
 
 export const TEST_BASE_URL = 'https://artifacts.test';
 
@@ -21,6 +22,8 @@ export interface TestServer {
   mailer: MemoryMailer;
   /** The stand-in for Google. Set `nextIdentity` to say who signs in next. */
   google: FakeGoogleClient;
+  /** The live change feed the app announces writes on. */
+  changes: ChangeFeed;
   /** Every line the server logged, as parsed objects. */
   logLines: Record<string, unknown>[];
   request: (path: string, init?: RequestInit) => Promise<Response>;
@@ -49,7 +52,7 @@ function createFakeGoogleClient(): FakeGoogleClient {
 
 export function createTestServer(
   env: Record<string, string | undefined> = {},
-  options: { serveWebApp?: boolean } = {},
+  options: { serveWebApp?: boolean; heartbeatMs?: number } = {},
 ): TestServer {
   const config = loadConfig({
     BASE_URL: TEST_BASE_URL,
@@ -66,6 +69,7 @@ export function createTestServer(
   });
   const mailer = createMemoryMailer();
   const google = createFakeGoogleClient();
+  const changes = new ChangeFeed({ logger, heartbeatMs: options.heartbeatMs });
 
   // API only by default: these tests are about the API, and the app's catch-all
   // route would otherwise answer for anything they did not expect. The tests
@@ -77,6 +81,7 @@ export function createTestServer(
     mailer,
     google,
     serveWebApp: options.serveWebApp ?? false,
+    changes,
   });
 
   const request = (path: string, init?: RequestInit) =>
@@ -89,9 +94,13 @@ export function createTestServer(
     logger,
     mailer,
     google,
+    changes,
     logLines,
     request,
-    close: () => database.close(),
+    close: () => {
+      changes.close();
+      database.close();
+    },
   };
 }
 

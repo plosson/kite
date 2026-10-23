@@ -5,6 +5,9 @@
  * and nothing on the page for script to leak. Every request just says "same
  * origin, send the cookie".
  *
+ * Every request names the tab it came from (X-Kite-Client), so the live
+ * stream can tell this tab's own changes from everybody else's; see live.ts.
+ *
  * The response shapes come from @open-artifact/shared, which the server imports
  * too, so the app and the server cannot drift apart without the compiler saying
  * so.
@@ -28,6 +31,7 @@ import type {
   ArtifactVersionsResponse,
   ArtifactVersionDetail,
 } from '@open-artifact/shared';
+import { CLIENT_ID, CLIENT_ID_HEADER } from './live.js';
 
 export type { TimelineEvent } from '@open-artifact/shared';
 export type {
@@ -124,6 +128,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     credentials: 'same-origin',
     ...init,
     headers: {
+      [CLIENT_ID_HEADER]: CLIENT_ID,
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init.headers ?? {}),
     },

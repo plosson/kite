@@ -20,6 +20,11 @@
  * There are two ways in. Somebody signed in gets the viewer inside the app, with
  * a sidebar. Somebody who is not signed in gets it only if the artifact is
  * public, standalone, with a way to sign in. Both use the same body.
+ *
+ * Either way the page follows the document while it is open, over one live
+ * stream (live.ts): somebody else's new version, new title or new comment
+ * shows up without anybody reloading, and a document taken away from this
+ * reader turns into the page saying so.
  */
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -54,6 +59,13 @@ import {
   type BridgeSelection,
 } from '../components/frame-bridge.js';
 import { NotFound } from './NotFound.js';
+import {
+  LiveContext,
+  useLiveConnection,
+  useLiveEvents,
+  useLiveState,
+  type LiveConnection,
+} from '../live.js';
 
 /** React Flow is its own chunk: Markdown and HTML readers never download it. */
 const CanvasView = lazy(() => import('../canvas/CanvasView.js'));
@@ -71,7 +83,7 @@ export function Artifact({ slug }: { slug: string }) {
   const { user } = useAccount();
   const { navigate } = useRouter();
 
-  const { artifact, setArtifact, missing, expired } = useArtifact(slug);
+  const { artifact, setArtifact, missing, expired, refresh } = useArtifact(slug);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
@@ -97,6 +109,8 @@ export function Artifact({ slug }: { slug: string }) {
 
   const conversation = useComments(artifact?.id ?? null, artifact?.youMay?.comment ?? false);
   useLinkedThread(conversation.threads, conversation.revealThread);
+  const live = useLiveConnection(artifact?.id ?? null);
+  useFollow(live, artifact, refresh, conversation.reload);
 
   // Seed the shared star state from what the server said about this artifact, so
   // the bar's star and the sidebar's agree the moment the page opens.
@@ -115,7 +129,7 @@ export function Artifact({ slug }: { slug: string }) {
 
   return (
     <div className="flex h-dvh flex-col">
-      <Bar artifact={artifact} byline={isOwner ? 'You' : ownerOf(artifact)} leading={<SidebarButton />}>
+      <Bar artifact={artifact} byline={isOwner ? 'You' : ownerOf(artifact)} live={live} leading={<SidebarButton />}>
         {/* A reader has the sidebar collapsed and the footer a scroll away, so
             the one obvious way to their own setup sits here in the bar. */}
         {invitePublish && <PublishPill />}
@@ -200,27 +214,29 @@ export function Artifact({ slug }: { slug: string }) {
         />
       ) : (
         <div className="flex min-h-0 flex-1">
-          <Body
-            slug={slug}
-            artifact={artifact}
-            threads={conversation.threads}
-            activeThreadId={conversation.activeThreadId}
-            revealCount={conversation.revealCount}
-            onNewThread={conversation.reload}
-            onRevealThread={conversation.revealThread}
-            canComment={conversation.canComment}
-            isArtifactOwner={isOwner}
-            // The owner wrote it and already uses this, and somebody already set up
-            // does not need asking; only an unconnected reader is worth the nudge.
-            publishCta={invitePublish}
-            editing={editing}
-            fullSource={fullSource}
-            leaveGuard={leaveGuard}
-            onLeaveEditing={() => {
-              setEditing(false);
-              setFullSource(false);
-            }}
-          />
+          <LiveContext.Provider value={live}>
+            <Body
+              slug={slug}
+              artifact={artifact}
+              threads={conversation.threads}
+              activeThreadId={conversation.activeThreadId}
+              revealCount={conversation.revealCount}
+              onNewThread={conversation.reload}
+              onRevealThread={conversation.revealThread}
+              canComment={conversation.canComment}
+              isArtifactOwner={isOwner}
+              // The owner wrote it and already uses this, and somebody already set up
+              // does not need asking; only an unconnected reader is worth the nudge.
+              publishCta={invitePublish}
+              editing={editing}
+              fullSource={fullSource}
+              leaveGuard={leaveGuard}
+              onLeaveEditing={() => {
+                setEditing(false);
+                setFullSource(false);
+              }}
+            />
+          </LiveContext.Provider>
 
           <CommentsPanel
             artifactId={artifact.id}
@@ -293,10 +309,13 @@ export function Artifact({ slug }: { slug: string }) {
 export function PublicArtifact({
   slug,
   artifact,
+  refresh,
   onSignIn,
 }: {
   slug: string;
   artifact: SharedArtifact;
+  /** Reads the artifact again, as useArtifact does, when the live stream says it changed. */
+  refresh: () => void;
   onSignIn: () => void;
 }) {
   // A signed-out reader cannot comment, so the panel is read-only. It is shown
@@ -307,12 +326,14 @@ export function PublicArtifact({
   const conversation = useComments(artifact.id, false);
   useLinkedThread(conversation.threads, conversation.revealThread);
   const [commentsCollapsed, toggleComments] = useCommentsCollapsed();
+  const live = useLiveConnection(artifact.id);
+  useFollow(live, artifact, refresh, conversation.reload);
 
   return (
     <div className="flex h-dvh flex-col">
       {/* A reader with no account has no sidebar and so no branding and no way
           back to the front door. The wordmark is both. */}
-      <Bar artifact={artifact} byline={ownerOf(artifact)} brand>
+      <Bar artifact={artifact} byline={ownerOf(artifact)} live={live} brand>
         {/* A reader with no account has no sidebar, so this bar is the only
             place they can be given the choice. Somebody who came to read a long
             document at night should not have to sign up to turn the lights
@@ -336,16 +357,18 @@ export function PublicArtifact({
       <About description={artifact.description} summary={artifact.summary} />
 
       <div className="flex min-h-0 flex-1">
-        <Body
-          slug={slug}
-          artifact={artifact}
-          threads={conversation.threads}
-          activeThreadId={conversation.activeThreadId}
-          revealCount={conversation.revealCount}
-          onRevealThread={conversation.revealThread}
-          canComment={false}
-          publishCta
-        />
+        <LiveContext.Provider value={live}>
+          <Body
+            slug={slug}
+            artifact={artifact}
+            threads={conversation.threads}
+            activeThreadId={conversation.activeThreadId}
+            revealCount={conversation.revealCount}
+            onRevealThread={conversation.revealThread}
+            canComment={false}
+            publishCta
+          />
+        </LiveContext.Provider>
 
         <CommentsPanel
           artifactId={artifact.id}
@@ -376,12 +399,14 @@ export function PublicArtifact({
 function Bar({
   artifact,
   byline,
+  live,
   brand = false,
   leading,
   children,
 }: {
   artifact: SharedArtifact;
   byline: string | null;
+  live: LiveConnection | null;
   /** Show the Kite wordmark on the left, for readers with no sidebar. */
   brand?: boolean;
   /** Drawn first, before the title: the way into the sidebar on a phone. */
@@ -410,6 +435,7 @@ function Bar({
           </span>
         )}
         <ExpiringSoon expiresAt={artifact.expiresAt} />
+        <LiveStatus connection={live} />
       </div>
 
       <p className="hidden shrink-0 text-[12px] text-ink-3 sm:block">
@@ -471,6 +497,39 @@ function ExpiringSoon({ expiresAt }: { expiresAt: string | null }) {
         Expires {describeRemaining(expiresAt, new Date().toISOString())}
       </time>
     </Badge>
+  );
+}
+
+/**
+ * Whether the page is following the document right now.
+ *
+ * Quiet while it is, because that is the normal state and needs no reading:
+ * a dot, and the word on a screen with room for it. Saying so when it is not
+ * matters more — somebody waiting for their agent's change to appear should
+ * know the page is reconnecting rather than wonder why nothing happens.
+ */
+function LiveStatus({ connection }: { connection: LiveConnection | null }) {
+  const state = useLiveState(connection);
+  if (state === null) return null;
+
+  const { label, title, colour } = {
+    connecting: { label: 'Connecting', title: 'Connecting to live updates…', colour: 'bg-ink-3' },
+    live: { label: 'Live', title: 'Changes appear here as they are made', colour: 'bg-[oklch(68%_0.15_150)]' },
+    reconnecting: { label: 'Reconnecting', title: 'Not receiving changes. Reconnecting…', colour: 'bg-[oklch(74%_0.15_78)]' },
+    closed: { label: 'Offline', title: 'Not receiving changes', colour: 'bg-ink-3' },
+  }[state];
+
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-ink-3"
+      title={title}
+      role="status"
+      data-testid="live-status"
+      data-state={state}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${colour}`} aria-hidden="true" />
+      <span className="max-md:sr-only">{label}</span>
+    </span>
   );
 }
 
@@ -605,6 +664,7 @@ function Body({
         <RenderedMarkdown
           slug={slug}
           artifactId={artifact.id}
+          version={artifact.version}
           threads={threads}
           activeThreadId={activeThreadId}
           revealCount={revealCount}
@@ -622,7 +682,9 @@ function Body({
     case 'html':
       body = (
         <div className="flex min-h-full flex-col">
+          {/* A new version is a new page: a fresh frame, and a fresh selection. */}
           <FramedHtml
+            key={artifact.version}
             slug={slug}
             title={artifact.title}
             artifactId={artifact.id}
@@ -1005,6 +1067,7 @@ function explainRefusal(reason: string): string {
 function RenderedMarkdown({
   slug,
   artifactId,
+  version,
   threads,
   activeThreadId,
   revealCount,
@@ -1019,6 +1082,8 @@ function RenderedMarkdown({
 }: {
   slug: string;
   artifactId: string;
+  /** The newest version the page knows of; a newer one than on screen is fetched. */
+  version: number;
   threads: CommentThread[];
   activeThreadId: string | null;
   /** Goes up each time somebody asks to be taken to a thread's passage. */
@@ -1150,6 +1215,19 @@ function RenderedMarkdown({
         if (loadedSlug.current !== slug) setHtml('');
       });
   }, [slug, reloads]);
+
+  /*
+   * Somebody else published a newer version while this one was open.
+   *
+   * Fetched the way a save's reload is, so the reader keeps their place. Not
+   * while the owner is editing: the editor holds the source it opened, and a
+   * save over a newer version is refused and says so, which is the honest
+   * answer. Leaving editing catches up.
+   */
+  useEffect(() => {
+    if (editing || renderedVersion === null || version <= renderedVersion) return;
+    reloadDocument();
+  }, [version, renderedVersion, editing, reloadDocument]);
 
   /*
    * Put the reader back, before the browser paints.
@@ -1452,13 +1530,16 @@ function useComments(artifactId: string | null, canComment: boolean) {
     reveal: 0,
   });
 
+  /** Counts reads, so only the newest one is allowed to paint. */
+  const latestRead = useRef(0);
   const reload = useCallback(() => {
     if (!artifactId) return;
 
+    const readId = ++latestRead.current;
     endpoints
       .comments(artifactId)
-      .then((response) => setThreads(response.threads))
-      .catch(() => setThreads([]))
+      .then((response) => readId === latestRead.current && setThreads(response.threads))
+      .catch(() => readId === latestRead.current && setThreads([]))
       .finally(() => setLoading(false));
   }, [artifactId]);
 
@@ -1515,40 +1596,97 @@ function useLinkedThread(threads: CommentThread[], revealThread: (threadId: stri
   }, [wanted, threads, revealThread]);
 }
 
-/** Loads an artifact by the slug in the URL. */
-export function useArtifact(slug: string) {
+/**
+ * Loads an artifact by the slug in the URL; null loads nothing.
+ *
+ * `refresh` reads it again in place, for when the live stream says it changed.
+ * The artifact on screen stays up meanwhile, and stays up if the read fails
+ * for a reason that says nothing about the artifact (the network, the server
+ * restarting); only the server saying it is gone or expired replaces it.
+ */
+export function useArtifact(slug: string | null) {
   const [artifact, setArtifact] = useState<SharedArtifact | null>(null);
   const [missing, setMissing] = useState(false);
   const [expired, setExpired] = useState<ExpiredLink | null>(null);
+  /** Counts reads, so a slow one cannot overwrite a newer one, or another slug's. */
+  const latestRead = useRef(0);
+
+  const read = useCallback(
+    (first: boolean) => {
+      if (slug === null) return;
+      const readId = ++latestRead.current;
+
+      endpoints
+        .artifactBySlug(slug)
+        .then((loaded) => readId === latestRead.current && setArtifact(loaded))
+        .catch((error: unknown) => {
+          if (readId !== latestRead.current) return;
+          const answer = error instanceof ApiError && error.status < 500;
+          if (!first && !answer) return;
+
+          // An expired link is the one refusal that says what happened, because
+          // the server only ever gives that answer to somebody it used to work
+          // for. Everything else is "not found", and "not yours" and "does not
+          // exist" are deliberately the same answer, which this screen must not
+          // undo by telling them apart.
+          const gone = error instanceof ApiError ? error.expiredLink : null;
+          setArtifact(null);
+          if (gone) setExpired(gone);
+          else setMissing(true);
+        });
+    },
+    [slug],
+  );
 
   useEffect(() => {
-    let current = true;
     setArtifact(null);
     setMissing(false);
     setExpired(null);
-
-    endpoints
-      .artifactBySlug(slug)
-      .then((loaded) => current && setArtifact(loaded))
-      .catch((error: unknown) => {
-        if (!current) return;
-
-        // An expired link is the one refusal that says what happened, because
-        // the server only ever gives that answer to somebody it used to work
-        // for. Everything else is "not found", and "not yours" and "does not
-        // exist" are deliberately the same answer, which this screen must not
-        // undo by telling them apart.
-        const gone = error instanceof ApiError ? error.expiredLink : null;
-        if (gone) setExpired(gone);
-        else setMissing(true);
-      });
-
+    read(true);
     return () => {
-      current = false;
+      latestRead.current += 1;
     };
-  }, [slug]);
+  }, [read]);
 
-  return { artifact, setArtifact, missing, expired };
+  const refresh = useCallback(() => read(false), [read]);
+
+  return { artifact, setArtifact, missing, expired, refresh };
+}
+
+/**
+ * Keeps the page in step with the document while it is open.
+ *
+ * What changed decides what is read again, and nothing is read that did not
+ * change: a new version is the artifact (its version and when it changed,
+ * which the body follows) and the comments (whose anchors moved with it); new
+ * details are the artifact; comments are the comments. A canvas follows its
+ * own content from the same stream (see CanvasView).
+ *
+ * Connecting again after a drop says nothing about what was missed meanwhile,
+ * so it reads everything. The stream ending for good is read as the artifact,
+ * which is how the page comes to say it is gone, expired or no longer shared.
+ */
+function useFollow(
+  live: LiveConnection | null,
+  artifact: SharedArtifact | null,
+  refresh: () => void,
+  reloadComments: () => void,
+): void {
+  useLiveEvents(live, (event) => {
+    switch (event.type) {
+      case 'ready':
+        if (event.reconnected) reloadComments();
+        if (event.reconnected || event.version !== artifact?.version) refresh();
+        return;
+      case 'change':
+        if (event.kind !== 'comments') refresh();
+        if (event.kind !== 'details') reloadComments();
+        return;
+      case 'gone':
+        refresh();
+        return;
+    }
+  });
 }
 
 function Loading() {

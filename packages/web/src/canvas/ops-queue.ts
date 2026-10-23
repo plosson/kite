@@ -24,7 +24,12 @@ export interface OpsResult {
 export interface OpsQueueOptions {
   /** POST /api/artifacts/:id/canvas/ops. */
   send: (baseVersion: number, ops: QueuedOp[]) => Promise<OpsResult>;
-  /** Re-reads the canvas; returns its version. Called after a 409 and after every save. */
+  /**
+   * Re-reads the canvas, replaying what is unsaved; returns its version. Called
+   * after a 409. Not after a save that went through: that one was applied to
+   * exactly the version the owner was looking at, so their copy already is the
+   * server's, and anybody else's change arrives over the live stream.
+   */
   reload: () => Promise<number>;
   getVersion: () => number;
   onSaved?: (version: number) => void;
@@ -74,7 +79,6 @@ export function createOpsQueue(options: OpsQueueOptions) {
       const result = await options.send(options.getVersion(), ops);
       options.onSaved?.(result.version);
     }
-    await options.reload();
   }
 
   function push(op: QueuedOp) {

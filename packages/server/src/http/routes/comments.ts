@@ -14,6 +14,7 @@ import type { Hono } from 'hono';
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
+import { originOf } from '../origin.js';
 
 import { requireAccess } from '../../artifacts/access.js';
 import type { ThreadStatus, CommentPosition } from '../../comments/service.js';
@@ -173,6 +174,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
       author,
       body: requireString(body, 'body'),
       position,
+      origin: originOf(c),
     });
 
     const first = thread.comments[0];
@@ -212,7 +214,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     const author = currentUser(c);
     const body = await readJson(c.req.raw);
 
-    const reply = comments.reply(threadId, author, requireString(body, 'body'));
+    const reply = comments.reply(threadId, author, requireString(body, 'body'), originOf(c));
 
     const facts = sharing.accessFactsFor(artifact);
     const mentions = notifications.recordMentions({
@@ -248,7 +250,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
       throw new ApiError('validation_failed', 'status must be "open" or "resolved".');
     }
 
-    return c.json(comments.setStatus(threadId, currentUser(c), artifact.ownerId, status));
+    return c.json(comments.setStatus(threadId, currentUser(c), artifact.ownerId, status, originOf(c)));
   });
 
   /**
@@ -263,7 +265,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     artifactFor(comments.artifactIdForComment(commentId), 'comment', c);
 
     const body = await readJson(c.req.raw);
-    return c.json(comments.edit(commentId, currentUser(c), requireString(body, 'body')));
+    return c.json(comments.edit(commentId, currentUser(c), requireString(body, 'body'), originOf(c)));
   });
 
   /** Delete a comment. Yours, or anything on an artifact you own. */
@@ -271,7 +273,7 @@ export function registerCommentRoutes(app: Hono<AppEnv>, context: AppContext): v
     const commentId = c.req.param('commentId');
     const artifact = artifactFor(comments.artifactIdForComment(commentId), 'comment', c);
 
-    return c.json(comments.delete(commentId, currentUser(c), artifact.ownerId));
+    return c.json(comments.delete(commentId, currentUser(c), artifact.ownerId, originOf(c)));
   });
 }
 

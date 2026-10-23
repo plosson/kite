@@ -56,6 +56,19 @@ not ask, Kite puts the node next to the last thing that changed. When new
 nodes arrive while you look at the canvas, Kite shows "1 new node · Show".
 Click Show to go to them.
 
+### See changes as they happen
+
+> **As an author,** I want my open document to show my agent's changes at once,
+> **so that** I do not need to reload the page.
+
+An open document now follows changes as they are made. When your agent
+changes a canvas, the new nodes are there at once, with "1 new node · Show".
+New comments, a new title and new versions of Markdown and HTML documents
+also arrive without a reload. Your own changes in the same tab are not shown
+as new. A dot in the bar says "Live". When the connection drops, it says
+"Reconnecting", and the page catches up when it is back. When the owner
+removes your access, the page tells you that the document is not there.
+
 ### Comment on a node
 
 > **As a reader,** I want to comment on one card of a canvas,

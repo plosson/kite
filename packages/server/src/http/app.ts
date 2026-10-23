@@ -18,6 +18,7 @@ import { registerWorkspaceRoutes } from './routes/workspaces.js';
 import { registerViewsRoutes } from './routes/views.js';
 import { registerVersionRoutes } from './routes/versions.js';
 import { registerCanvasRoutes } from './routes/canvas.js';
+import { registerEventRoutes } from './routes/events.js';
 import { registerViewRoutes } from './routes/view.js';
 import { registerLeavingRoutes } from './routes/leaving.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -45,6 +46,7 @@ import { createMailer, type Mailer } from '../mail/mailer.js';
 import { createGoogleClient, type GoogleClient } from '../auth/google.js';
 import { attachUser } from './session.js';
 import { createRateLimiter, type RateLimiter } from './rate-limit.js';
+import { ChangeFeed } from '../live/feed.js';
 import type { UserRow } from '../db/schema.js';
 
 export interface AppDependencies {
@@ -60,6 +62,11 @@ export interface AppDependencies {
    * this off, so the app's catch-all route does not answer for them.
    */
   serveWebApp?: boolean;
+  /**
+   * The live change feed. Made here when left out; the entry point passes its
+   * own so that stopping the server can close every open stream first.
+   */
+  changes?: ChangeFeed;
 }
 
 export interface AppContext {
@@ -75,6 +82,7 @@ export interface AppContext {
   oauth: OAuthService;
   rateLimiter: RateLimiter;
   views: ViewService;
+  changes: ChangeFeed;
   mailer: Mailer;
   google: GoogleClient;
   logger: Logger;
@@ -93,6 +101,12 @@ export type AppEnv = {
      * from being counted as somebody reading it.
      */
     credential?: 'session' | 'token';
+    /**
+     * Asks again who the credential on this request belongs to: null once it
+     * has been revoked or has expired. For a request that outlives the moment
+     * it arrived, such as a live stream. Set alongside user.
+     */
+    reauthenticate?: () => UserRow | null;
   };
 };
 
@@ -103,9 +117,10 @@ export function createApp({
   mailer = createMailer(config.smtp, logger),
   google = config.google ? createGoogleClient(config.google) : unconfiguredGoogleClient(),
   serveWebApp = true,
+  changes = new ChangeFeed({ logger }),
 }: AppDependencies): Hono<AppEnv> {
-  const sharing = new SharingService(database.db);
-  const comments = new CommentService(database.db);
+  const sharing = new SharingService(database.db, changes);
+  const comments = new CommentService(database.db, changes);
   // Notifications can share, because the owner tagging somebody new in a
   // comment grants them access in the same breath.
   const notifications = new NotificationService(database.db, sharing);
@@ -132,8 +147,11 @@ export function createApp({
     logger,
     mailer,
     google,
+    changes,
     artifacts: new ArtifactService({
       db: database.db,
+      anchors: comments,
+      changes,
       maxArtifactBytes: config.maxArtifactBytes,
       maxArtifactsPerUser: config.limits.artifactsPerUser,
       maxStorageBytesPerUser: config.limits.storageBytesPerUser,
@@ -189,6 +207,7 @@ export function createApp({
   registerViewsRoutes(app, context);
   registerVersionRoutes(app, context);
   registerCanvasRoutes(app, context);
+  registerEventRoutes(app, context);
   registerSharingRoutes(app, context);
   registerCommentRoutes(app, context);
   registerNotificationRoutes(app, context);

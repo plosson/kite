@@ -6,13 +6,15 @@
  * groups, connect sides, resize, delete, undo and redo. Every edit is applied
  * to the owner's copy at once and sent as canvas operations
  * (POST /api/artifacts/:id/canvas/ops), coalesced so a drag is one version.
- * The server stays the source of truth: after each save, and every few seconds
- * while idle, the canvas is read again and any unsaved work replayed over it.
+ * The server stays the source of truth: when the page's live stream says
+ * somebody else changed the canvas (usually the owner's own agent), or after
+ * a save that collided with them, it is read again and any unsaved work
+ * replayed over it. Nodes that arrived that way are offered in a pill.
  *
  * Default export so Artifact.tsx can lazy-load it: React Flow is a separate
  * chunk that Markdown and HTML readers never download.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   ConnectionMode,
@@ -53,6 +55,7 @@ import {
 import { api, ApiError, endpoints } from '../api.js';
 import { Button, Dialog, TextInput } from '../components/primitives.js';
 import { Composer } from '../components/Comments.js';
+import { LiveContext, useLiveEvents } from '../live.js';
 import { createOpsQueue } from './ops-queue.js';
 import { applyBestEffort, createEditorState, localId } from './editor-state.js';
 import { edgeSides, flowNodes, isBigCanvas, linkHref, LOD } from './to-flow.js';
@@ -448,7 +451,6 @@ export default function CanvasView(props: CanvasViewProps) {
   );
 }
 
-const POLL_MS = 10_000;
 /** One empty list for every render, so a canvas shown without comments does not rebuild itself forever. */
 const NO_THREADS: CommentThread[] = [];
 
@@ -491,6 +493,9 @@ function CanvasInner({
 
   const load = useCallback(async () => {
     const next = await api<CanvasPayload>(`/api/artifacts/${artifactId}/canvas`);
+    // Two reads can be in the air at once; the older one must not win by
+    // arriving last, nor undo a save that already went through on top of it.
+    if (next.kite.version < versionRef.current) return versionRef.current;
     const known = new Set((localRef.current?.nodes ?? []).map((n) => n.id));
     const first = localRef.current === null;
     versionRef.current = next.kite.version;
@@ -513,7 +518,11 @@ function CanvasInner({
           method: 'POST',
           body: JSON.stringify({ baseVersion, ops }),
         }),
-      onSaved: () => setStatus(q.size > 0 ? 'saving' : 'saved'),
+      onSaved: (saved) => {
+        versionRef.current = Math.max(versionRef.current, saved);
+        setVersion(versionRef.current);
+        setStatus(q.size > 0 ? 'saving' : 'saved');
+      },
       onError: (error) => {
         setStatus('error');
         setFailure(error instanceof ApiError ? error.message : 'Could not save the canvas.');
@@ -524,25 +533,52 @@ function CanvasInner({
     return q;
   }, [artifactId, load]);
 
-  useEffect(() => {
-    if (fixed) return;
-    load().catch((error: unknown) => setFailure(error instanceof ApiError ? error.message : 'Could not load the canvas.'));
-  }, [load, fixed]);
+  /*
+   * Following somebody else's changes, as the page's live stream reports them.
+   *
+   * Only the newest version matters, so a burst of changes is one read at a
+   * time until the canvas has caught up rather than one read per change. The
+   * stream also says where things stand when it (re)connects, which is how a
+   * canvas that was offline for a while catches up, and the version it knows
+   * is checked once the first read lands, for a change that came in between.
+   */
+  const live = useContext(LiveContext);
+  const wanted = useRef(0);
+  const catchingUp = useRef(false);
+  const catchUp = useCallback(
+    async (version: number) => {
+      wanted.current = Math.max(wanted.current, version);
+      if (fixed || catchingUp.current || localRef.current === null) return;
+      catchingUp.current = true;
+      try {
+        while (wanted.current > versionRef.current) {
+          if ((await load()) < wanted.current) break;
+        }
+      } catch {
+        // The stream will say when there is something newer; nothing to retry here.
+      } finally {
+        catchingUp.current = false;
+      }
+    },
+    [fixed, load],
+  );
 
-  // Somebody else (usually the owner's own agent) may be writing. Read again
-  // every few seconds while nothing of ours is waiting to be saved.
+  useLiveEvents(live, (event) => {
+    if (event.type === 'ready' || (event.type === 'change' && event.kind === 'content' && event.version !== null)) {
+      void catchUp(event.version ?? 0);
+    }
+  });
+
+  /** Read, not depended on: the stream arriving later must not mean a second first read. */
+  const liveRef = useRef(live);
+  liveRef.current = live;
+
   useEffect(() => {
     if (fixed) return;
-    const timer = setInterval(() => {
-      if (document.hidden || queue.busy) return;
-      void api<{ version: number }>(`/api/artifacts/${artifactId}/canvas/outline?depth=1`)
-        .then((outline) => {
-          if (outline.version !== versionRef.current && !queue.busy) void load();
-        })
-        .catch(() => undefined);
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [artifactId, fixed, load, queue]);
+    load()
+      .then(() => catchUp(liveRef.current?.version ?? 0))
+      .catch((error: unknown) => setFailure(error instanceof ApiError ? error.message : 'Could not load the canvas.'));
+  }, [load, fixed, catchUp]);
 
   // Leaving the page should not drop a drag that has not been sent yet.
   useEffect(() => () => void queue.flush(), [queue]);

@@ -5,6 +5,10 @@
  * sharing with somebody who has never used this instance. The invitation waits
  * for them; when they first sign in with that verified address it attaches to
  * their account, and they find the artifact already there.
+ *
+ * Anything that can narrow who may read an artifact is announced on the change
+ * feed, so a reader who just lost access stops hearing about it straight away
+ * rather than at the next check.
  */
 
 import { eq, and, isNull, inArray } from 'drizzle-orm';
@@ -22,6 +26,7 @@ import { ApiError } from '../errors.js';
 import { normaliseEmail, isValidEmail, domainOf } from '../auth/email-address.js';
 import { isPublicEmailProvider } from './public-domains.js';
 import type { ArtifactAccessFacts } from './access.js';
+import type { ChangePublisher } from '../live/feed.js';
 import {
   parseExpiry,
   expiryDeadline,
@@ -49,9 +54,26 @@ export interface SharingState {
 
 export class SharingService {
   private readonly db: Db;
+  private readonly changes: ChangePublisher;
 
-  constructor(db: Db) {
+  constructor(db: Db, changes: ChangePublisher) {
     this.db = db;
+    this.changes = changes;
+  }
+
+  /** The same, by id. Null when there is no such artifact any more. */
+  accessFactsById(artifactId: string): ArtifactAccessFacts | null {
+    const artifact = this.db
+      .select({
+        id: artifacts.id,
+        ownerId: artifacts.ownerId,
+        isPublic: artifacts.isPublic,
+        expiresAt: artifacts.expiresAt,
+      })
+      .from(artifacts)
+      .where(eq(artifacts.id, artifactId))
+      .get();
+    return artifact ? this.accessFactsFor(artifact) : null;
   }
 
   /** Everything the access decision needs, in one read. */
@@ -181,6 +203,7 @@ export class SharingService {
         ),
       )
       .run();
+    if (result.changes > 0) this.changes.publish({ kind: 'access', artifactId });
     return result.changes > 0;
   }
 
@@ -232,6 +255,7 @@ export class SharingService {
         ),
       )
       .run();
+    if (result.changes > 0) this.changes.publish({ kind: 'access', artifactId });
     return result.changes > 0;
   }
 
@@ -246,6 +270,7 @@ export class SharingService {
       .set({ isPublic: isPublic ? 1 : 0 })
       .where(eq(artifacts.id, artifactId))
       .run();
+    if (!isPublic) this.changes.publish({ kind: 'access', artifactId });
 
     // Turning it off again deliberately leaves the deadline alone. Restoring
     // whatever it was before would mean remembering a value the owner cannot
@@ -267,6 +292,7 @@ export class SharingService {
   setExpiry(artifactId: string, spec: ExpirySpec): string | null {
     const expiresAt = expiryDeadline(spec, nowIso());
     this.db.update(artifacts).set({ expiresAt }).where(eq(artifacts.id, artifactId)).run();
+    this.changes.publish({ kind: 'access', artifactId });
     return expiresAt;
   }
 
@@ -365,6 +391,7 @@ export class SharingService {
       .set({ expiresAt: deadline })
       .where(eq(artifacts.id, artifactId))
       .run();
+    this.changes.publish({ kind: 'access', artifactId });
     return deadline;
   }
 

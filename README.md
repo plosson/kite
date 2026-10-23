@@ -59,6 +59,12 @@ Two things to know before you go live:
 
 **Put a reverse proxy in front of it.** The container binds to localhost only,
 on purpose. Terminate TLS with Caddy, nginx or Traefik and forward to it.
+Open documents follow changes over a long-lived stream
+(`/api/artifacts/:id/events`, server-sent events with a heartbeat every 25
+seconds). Caddy and Traefik pass it through as it is; nginx does too, because
+the response says `X-Accel-Buffering: no`. Keep the proxy's read timeout above
+a minute. Changes are announced inside the one server process, which is what
+the single SQLite file already asks for: run one instance, not several.
 
 **You need a mail server.** Sign-in codes and share notifications go out over
 SMTP. Amazon SES, Postmark, Fastmail, your own — anything that speaks SMTP.

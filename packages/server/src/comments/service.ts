@@ -31,6 +31,7 @@ import {
 } from '../db/schema.js';
 import { newId } from '../ids.js';
 import { nowIso, parseIso } from '../time.js';
+import type { ChangePublisher, Origin } from '../live/feed.js';
 import { ApiError, notFound } from '../errors.js';
 import {
   anchorForOccurrence,
@@ -107,11 +108,22 @@ export interface ListOptions {
   status?: ThreadStatus | undefined;
 }
 
+/**
+ * Every change to what was said is announced on the change feed, once it is
+ * written, with whoever said it. Re-checking anchors after a new version is
+ * not: that is part of the new version, which announces itself.
+ */
 export class CommentService {
   private readonly db: Db;
+  private readonly changes: ChangePublisher;
 
-  constructor(db: Db) {
+  constructor(db: Db, changes: ChangePublisher) {
     this.db = db;
+    this.changes = changes;
+  }
+
+  private announce(artifactId: string, userId: string, origin: Origin): void {
+    this.changes.publish({ kind: 'comments', artifactId, actor: { userId, ...origin } });
   }
 
   // ---------------------------------------------------------------------------
@@ -136,6 +148,7 @@ export class CommentService {
      * whole document. Pass null for one that sits before the first heading.
      */
     position?: CommentPosition | undefined;
+    origin: Origin;
   }): ThreadView {
     const body = requireBody(input.body);
     const anchor = this.resolveAnchor(input.artifact, input.position);
@@ -169,6 +182,7 @@ export class CommentService {
         .run();
     });
 
+    this.announce(thread.artifactId, input.author.id, input.origin);
     return this.threadView(thread.id);
   }
 
@@ -245,7 +259,7 @@ export class CommentService {
     return built.anchor;
   }
 
-  reply(threadId: string, author: UserRow, rawBody: string): CommentView {
+  reply(threadId: string, author: UserRow, rawBody: string, origin: Origin): CommentView {
     const thread = this.requireThread(threadId);
     const body = requireBody(rawBody);
 
@@ -260,6 +274,7 @@ export class CommentService {
     };
     this.db.insert(comments).values(comment).run();
 
+    this.announce(thread.artifactId, author.id, origin);
     return this.commentView(comment, author);
   }
 
@@ -267,7 +282,7 @@ export class CommentService {
   // Changing what was said
   // ---------------------------------------------------------------------------
 
-  edit(commentId: string, actor: UserRow, rawBody: string): CommentView {
+  edit(commentId: string, actor: UserRow, rawBody: string, origin: Origin): CommentView {
     const comment = this.requireComment(commentId);
 
     // Only the author, whoever else is asking. Editing somebody else's words is
@@ -282,6 +297,7 @@ export class CommentService {
 
     this.db.update(comments).set({ body, editedAt }).where(eq(comments.id, commentId)).run();
 
+    this.announce(this.artifactIdFor(comment.threadId), actor.id, origin);
     return this.commentView({ ...comment, body, editedAt }, actor);
   }
 
@@ -292,8 +308,14 @@ export class CommentService {
    * shape and a reply never becomes an answer to nothing. When nothing followed
    * it, and it was the only thing on the thread, the thread goes too.
    */
-  delete(commentId: string, actor: UserRow, artifactOwnerId: string): { threadDeleted: boolean } {
+  delete(
+    commentId: string,
+    actor: UserRow,
+    artifactOwnerId: string,
+    origin: Origin,
+  ): { threadDeleted: boolean } {
     const comment = this.requireComment(commentId);
+    const artifactId = this.artifactIdFor(comment.threadId);
 
     const isAuthor = comment.authorId === actor.id;
     const isArtifactOwner = actor.id === artifactOwnerId;
@@ -306,10 +328,12 @@ export class CommentService {
       // Nothing is left to keep the shape of, so take the thread with it rather
       // than leaving a placeholder nobody can reply to usefully.
       this.db.delete(commentThreads).where(eq(commentThreads.id, comment.threadId)).run();
+      this.announce(artifactId, actor.id, origin);
       return { threadDeleted: true };
     }
 
     this.db.update(comments).set({ deletedAt: nowIso() }).where(eq(comments.id, commentId)).run();
+    this.announce(artifactId, actor.id, origin);
     return { threadDeleted: false };
   }
 
@@ -322,6 +346,7 @@ export class CommentService {
     actor: UserRow,
     artifactOwnerId: string,
     status: ThreadStatus,
+    origin: Origin,
   ): ThreadView {
     const thread = this.requireThread(threadId);
 
@@ -344,6 +369,7 @@ export class CommentService {
       .where(eq(commentThreads.id, threadId))
       .run();
 
+    this.announce(thread.artifactId, actor.id, origin);
     return this.threadView(threadId);
   }
 
@@ -429,10 +455,8 @@ export class CommentService {
    * Threads whose passage is still there are untouched. Threads whose passage is
    * gone become document-level and are marked as having lost their place, which
    * the UI says out loud. Nothing is ever moved to different text.
-   *
-   * Returns how many lost their place, for the log.
    */
-  relocateAll(artifactId: string, newContent: string, artifactType: string): number {
+  relocateAll(artifactId: string, newContent: string, artifactType: string): void {
     // Every positioned thread, including ones already marked lost. Losing a
     // place must not be one-way: an agent that drops an id in one version and
     // restores it in the next should get the thread back, and it only can if we
@@ -448,11 +472,8 @@ export class CommentService {
       )
       .all();
 
-    let lostCount = 0;
-
     for (const thread of positioned) {
       const outcome = this.relocateOne(thread, newContent, artifactType);
-      if (!outcome.found) lostCount += 1;
 
       const wasLost = thread.anchorLost === 1;
       const wasDrifted = thread.anchorDrifted === 1;
@@ -474,8 +495,6 @@ export class CommentService {
         .where(eq(commentThreads.id, thread.id))
         .run();
     }
-
-    return lostCount;
   }
 
   /**

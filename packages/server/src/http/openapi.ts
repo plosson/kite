@@ -412,6 +412,18 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '429': 'Too many batches this hour',
     },
   },
+  'GET /api/artifacts/:id/events': {
+    summary: 'Hear about changes to a document as they happen',
+    description:
+      'A stream of server-sent events (`text/event-stream`) that stays open. Anybody who may read the document may listen, and that is checked again on every change and every heartbeat, against the current sharing and the current state of your session or token: a listener who can no longer read it (a share removed, signed out, the link expired) is told why and the stream ends. Events never carry content; fetch what changed through the ordinary routes. `ready` {version} comes first on every connection, so a reconnecting client can catch up. `change` {kind, version?, via, self} follows each write: `kind` is `content` (a new version: publish, update, canvas operations, restore), `details` (title, description or summary) or `comments`; `via` is `browser` or `agent`; `self` is true when the change was made by the tab that sent the same `X-Kite-Client` header here and on its write. `gone` {reason: deleted | expired | no-access} comes last, after which the stream closes and reconnecting is pointless. A `: ping` comment every 25 seconds keeps idle connections open through proxies. Optional `X-Kite-Client` header: 8 to 64 letters, digits, `-` or `_`.',
+    auth: 'optional',
+    responses: {
+      '200': 'The stream',
+      '400': 'A malformed client id',
+      '404': 'No such artifact, or you may not read it',
+      '410': 'The link has expired',
+    },
+  },
   'GET /api/views': {
     summary: 'How each of your documents has been read',
     description:

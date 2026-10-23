@@ -17,12 +17,11 @@ import {
   type CurrentUser,
   type ArtifactSummary,
   type SharedArtifact,
-  type ExpiredLink,
   type WorkspaceSummary,
 } from './api.js';
 import { Router, useRouter } from './router.jsx';
 import { SignIn } from './pages/SignIn.jsx';
-import { Artifact, PublicArtifact, ExpiredArtifact } from './pages/Artifact.jsx';
+import { Artifact, PublicArtifact, ExpiredArtifact, useArtifact } from './pages/Artifact.jsx';
 import { Home } from './pages/Home.jsx';
 import { Sessions } from './pages/Sessions.jsx';
 import { NotFound } from './pages/NotFound.jsx';
@@ -217,25 +216,12 @@ function SignedIn({ path }: { path: string }) {
 function SignedOut({ path, redirectTo }: { path: string; redirectTo: string | null }) {
   const slug = path.startsWith('/a/') ? decodeURIComponent(path.slice(3)) : null;
 
-  const [artifact, setArtifact] = useState<SharedArtifact | null>(null);
-  const [expired, setExpired] = useState<ExpiredLink | null>(null);
-  const [checked, setChecked] = useState(slug === null);
+  // An expired public link gets its own page: sending them to the sign-in wall
+  // instead would be telling them to get an account to fix something an
+  // account cannot fix.
+  const { artifact, missing, expired, refresh } = useArtifact(slug);
+  const checked = slug === null || artifact !== null || missing || expired !== null;
   const [wantsToSignIn, setWantsToSignIn] = useState(false);
-
-  useEffect(() => {
-    if (slug === null) return;
-
-    endpoints
-      .artifactBySlug(slug)
-      .then(setArtifact)
-      .catch((error: unknown) => {
-        // A public link that has run out. Sending them to the sign-in wall
-        // instead would be telling them to get an account to fix something an
-        // account cannot fix.
-        if (error instanceof ApiError) setExpired(error.expiredLink);
-      })
-      .finally(() => setChecked(true));
-  }, [slug]);
 
   // Same reasoning as the shell above: nothing is drawn until we know, because a
   // sign-in wall that flashes over a public document is worse than a still page.
@@ -251,7 +237,12 @@ function SignedOut({ path, redirectTo }: { path: string; redirectTo: string | nu
 
   if (artifact && slug && !wantsToSignIn) {
     return (
-      <PublicArtifact slug={slug} artifact={artifact} onSignIn={() => setWantsToSignIn(true)} />
+      <PublicArtifact
+        slug={slug}
+        artifact={artifact}
+        refresh={refresh}
+        onSignIn={() => setWantsToSignIn(true)}
+      />
     );
   }
 

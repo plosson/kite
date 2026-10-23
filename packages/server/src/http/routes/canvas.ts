@@ -33,6 +33,7 @@ import {
 import type { AppContext, AppEnv } from '../app.js';
 import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
+import { actorOf } from '../origin.js';
 import { readJsonObject, jsonBodyCap } from '../body.js';
 import { requireAccess } from '../../artifacts/access.js';
 import type { ArtifactDetail } from '../../artifacts/service.js';
@@ -143,11 +144,11 @@ export function registerCanvasRoutes(app: Hono<AppEnv>, context: AppContext): vo
 
     // The service checks baseVersion again inside its write, which closes the
     // gap between the check above and this write when two batches race.
-    const updated = artifacts.update(artifact.id, { content: serialiseCanvas(result.doc), baseVersion });
-    const lost = context.comments.relocateAll(updated.id, updated.content, updated.type);
-    if (lost > 0) {
-      c.get('logger')?.info('comment anchors lost their place', { artifactId: updated.id, lost });
-    }
+    const updated = artifacts.update(
+      artifact.id,
+      { content: serialiseCanvas(result.doc), baseVersion },
+      actorOf(c),
+    );
 
     return c.json({
       id: updated.id,

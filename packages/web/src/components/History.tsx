@@ -421,7 +421,7 @@ function DiffTable({ rows }: { rows: DiffRow[] }) {
   );
 }
 
-/** A canvas as it was: no toolbar, no saving, no polling. */
+/** A canvas as it was: no toolbar, no saving, not following live changes. */
 function FixedCanvas({
   artifactId,
   doc,

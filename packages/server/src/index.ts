@@ -13,6 +13,7 @@ import { loadConfig, ConfigError } from './config.js';
 import { openDatabase } from './db/index.js';
 import { createApp } from './http/app.js';
 import { createLogger } from './logging.js';
+import { ChangeFeed } from './live/feed.js';
 
 export function start(): { stop: () => Promise<void>; port: number } {
   let config;
@@ -28,7 +29,8 @@ export function start(): { stop: () => Promise<void>; port: number } {
 
   const logger = createLogger({ level: config.logLevel });
   const database = openDatabase({ path: config.databasePath });
-  const app = createApp({ config, database, logger });
+  const changes = new ChangeFeed({ logger });
+  const app = createApp({ config, database, logger, changes });
 
   const server = serve({ fetch: app.fetch, port: config.port });
   logger.info('server started', {
@@ -39,6 +41,10 @@ export function start(): { stop: () => Promise<void>; port: number } {
   });
 
   const stop = async (): Promise<void> => {
+    // Live streams never finish on their own, and the server waits for every
+    // open connection before it lets go. Ending them first is what lets a
+    // redeploy stop promptly; the browsers reconnect to the new process.
+    changes.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     database.close();
     logger.info('server stopped');

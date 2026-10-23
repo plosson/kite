@@ -10,6 +10,10 @@
  * 2. Updates carry the version they were based on. If it does not match what is
  *    stored, the update is rejected. Two agents publishing to the same artifact is
  *    a realistic accident, and silently keeping only the last one loses work.
+ *
+ * Every committed change is announced on the change feed, after the comments
+ * anchored to it have been re-checked, so whoever hears about a new version and
+ * reads it back finds the comments already where they now belong.
  */
 
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
@@ -30,6 +34,7 @@ import { newId, newSlug } from '../ids.js';
 import { nowIso } from '../time.js';
 import { ApiError, notFound } from '../errors.js';
 import { deriveTitle } from './title.js';
+import type { Actor, ChangePublisher } from '../live/feed.js';
 
 export interface CreateArtifactInput {
   ownerId: string;
@@ -105,8 +110,18 @@ export interface StoredVersionSummary {
   isCurrent: boolean;
 }
 
+/**
+ * Re-checks every comment anchored to an artifact against its new content.
+ * The comment service, seen from here.
+ */
+export interface AnchorRelocator {
+  relocateAll(artifactId: string, newContent: string, artifactType: string): void;
+}
+
 export interface ArtifactServiceOptions {
   db: Db;
+  anchors: AnchorRelocator;
+  changes: ChangePublisher;
   maxArtifactBytes: number;
   /** How much one person may keep. Checked before every create. */
   maxArtifactsPerUser?: number;
@@ -115,17 +130,23 @@ export interface ArtifactServiceOptions {
 
 export class ArtifactService {
   private readonly db: Db;
+  private readonly anchors: AnchorRelocator;
+  private readonly changes: ChangePublisher;
   private readonly maxArtifactBytes: number;
   private readonly maxArtifactsPerUser: number;
   private readonly maxStorageBytesPerUser: number;
 
   constructor({
     db,
+    anchors,
+    changes,
     maxArtifactBytes,
     maxArtifactsPerUser = Number.MAX_SAFE_INTEGER,
     maxStorageBytesPerUser = Number.MAX_SAFE_INTEGER,
   }: ArtifactServiceOptions) {
     this.db = db;
+    this.anchors = anchors;
+    this.changes = changes;
     this.maxArtifactBytes = maxArtifactBytes;
     this.maxArtifactsPerUser = maxArtifactsPerUser;
     this.maxStorageBytesPerUser = maxStorageBytesPerUser;
@@ -171,6 +192,7 @@ export class ArtifactService {
     }
   }
 
+  /** Nothing is announced: nobody can be listening to an artifact that did not exist. */
   create(input: CreateArtifactInput): ArtifactDetail {
     const type = this.requireType(input.type);
     const content = this.normaliseContent(type, this.requireContent(input.content));
@@ -219,7 +241,7 @@ export class ArtifactService {
     return toDetail(row as ArtifactRow);
   }
 
-  update(id: string, input: UpdateArtifactInput): ArtifactDetail {
+  update(id: string, input: UpdateArtifactInput, actor: Actor): ArtifactDetail {
     const existing = this.requireRow(id);
     const type = input.type === undefined ? existing.type : this.requireType(input.type);
     // A canvas is a different kind of thing, not a different spelling of the
@@ -294,6 +316,12 @@ export class ArtifactService {
         .run();
     });
 
+    // Ones whose passage survived keep their place; ones whose passage is gone
+    // become document-level and are marked, rather than being moved to whatever
+    // text now sits where they used to point.
+    this.anchors.relocateAll(id, content, type);
+    this.changes.publish({ kind: 'content', artifactId: id, version, actor });
+
     return this.get(id);
   }
 
@@ -305,7 +333,7 @@ export class ArtifactService {
    * somebody tidied the titles. A summary written here is written against the
    * current version, so it catches up.
    */
-  describe(id: string, input: DescribeArtifactInput): ArtifactDetail {
+  describe(id: string, input: DescribeArtifactInput, actor: Actor): ArtifactDetail {
     const existing = this.requireRow(id);
     const title = normaliseGivenTitle(input.title);
     const description =
@@ -329,6 +357,7 @@ export class ArtifactService {
       .where(eq(artifacts.id, id))
       .run();
 
+    this.changes.publish({ kind: 'details', artifactId: id, version: existing.currentVersion, actor });
     return this.get(id);
   }
 
@@ -483,10 +512,11 @@ export class ArtifactService {
     return new Set(rows.map((row) => row.artifactId));
   }
 
-  delete(id: string): void {
+  delete(id: string, actor: Actor): void {
     const existing = this.requireRow(id);
     // Version rows and any stars go with it: the foreign keys cascade.
     this.db.delete(artifacts).where(eq(artifacts.id, existing.id)).run();
+    this.changes.publish({ kind: 'deleted', artifactId: existing.id, actor });
   }
 
   /**

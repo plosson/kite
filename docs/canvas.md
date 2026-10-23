@@ -93,8 +93,21 @@ The owner edits a canvas directly:
   the server as operations and only takes back your own change; if somebody
   changed the same thing since, it says so instead of overwriting.
 
-While the canvas is open, the page checks for changes every 10 seconds. Nodes
-an agent added show as **N new nodes · Show**.
+An open canvas follows changes as they are made. When an agent (or you, in
+another tab) writes to it, the page reads the canvas again at once and keeps
+anything you have not saved yet on top. New nodes that arrive this way show as
+**N new nodes · Show**. Your own changes in this tab are not shown as new. A
+small dot in the bar says **Live** while the page is following, and
+**Reconnecting** when the connection dropped; when it is back, the page
+catches up on whatever it missed.
+
+The page listens on `GET /api/artifacts/:id/events`, a stream of server-sent
+events that says what kind of thing changed and the version it is now at,
+never the content. Anybody who may read the canvas may listen, and that is
+checked again on every change and every 25-second heartbeat, so removing a
+share or letting a link expire ends the stream too. The same stream keeps the
+comments, the title and description, and Markdown and HTML documents up to
+date.
 
 Large canvases stay fast by drawing less: nodes off screen are not drawn;
 zoomed out, cards become boxes, labels go, and on canvases with more than 300
