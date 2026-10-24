@@ -29,7 +29,7 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
-## Unreleased
+## 24 October 2026 (1.6.0)
 
 ### Get a canvas as an image
 
