@@ -40,7 +40,7 @@ function coverage(px: number, py: number, w: number, h: number, r: number): numb
   const nearArcY = py - 0.5 < r || py + 0.5 > h - r;
   // Away from the corners' curves a pixel is cut by straight sides only.
   if (!(nearArcX && nearArcY) || r === 0) return overlap(px, w) * overlap(py, h);
-  const SAMPLES = 8;
+  const SAMPLES = 16;
   let inside = 0;
   for (let i = 0; i < SAMPLES; i++) {
     for (let j = 0; j < SAMPLES; j++) {

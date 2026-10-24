@@ -714,6 +714,11 @@ export async function renderCanvas(engine: FontEngine, doc: CanvasDocument, opti
     const y = Math.floor(minY - pad);
     area = { x, y, width: Math.ceil(maxX + pad) - x, height: Math.ceil(maxY + pad) - y };
   }
+  // Whole PNG pixels too: the drawing is widened to the next one, so it is drawn at exactly
+  // `scale` and not stretched to fit a size that was rounded.
+  const s = options.scale;
+  area.width = Math.ceil(area.width * s - 1e-6) / s;
+  area.height = Math.ceil(area.height * s - 1e-6) / s;
 
   if (options.target === 'png') drawing.shadows = new ShadowPainter(options.scale, area, (key, make) => drawing.def(key, make));
   nodes.forEach((node, order) => {
@@ -725,8 +730,8 @@ export async function renderCanvas(engine: FontEngine, doc: CanvasDocument, opti
   const body = items.map((i) => i.svg).join('');
   const style = drawing.fontUse ? await engine.fontFaces(drawing.fontUse) : '';
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${num(area.x)} ${num(area.y)} ${num(area.width)} ${num(area.height)}" ` +
-    `width="${num(area.width * options.scale)}" height="${num(area.height * options.scale)}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${num(area.x)} ${num(area.y)} ${num4(area.width)} ${num4(area.height)}" ` +
+    `width="${Math.round(area.width * s)}" height="${Math.round(area.height * s)}">` +
     `<defs>${style ? `<style>${style}</style>` : ''}${drawing.defsMarkup()}</defs>${backdrop}${body}</svg>`;
   return { svg, ...area };
 }
