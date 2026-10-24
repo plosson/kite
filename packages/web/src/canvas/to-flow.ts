@@ -6,7 +6,7 @@
  * when a moved group carries its members. So what follows a group live while
  * it is dragged is exactly what the server moves when the drag is saved.
  */
-import { parentGroupOf, type CanvasDocument, type CanvasEdge, type CanvasNode, type CanvasSide } from '@open-artifact/shared';
+import { nodeNesting, type CanvasDocument, type CanvasNode } from '@open-artifact/shared';
 
 export interface FlowNodeShape {
   id: string;
@@ -20,22 +20,9 @@ export interface FlowNodeShape {
 }
 
 export function flowNodes(doc: CanvasDocument): FlowNodeShape[] {
-  const groups = doc.nodes.filter((n) => n.type === 'group');
-  const parentOf = new Map<string, CanvasNode | null>();
-  for (const n of doc.nodes) parentOf.set(n.id, groups.length ? parentGroupOf({ nodes: groups }, n) : null);
-  const depthOf = (n: CanvasNode): number => {
-    let d = 0;
-    let p = parentOf.get(n.id);
-    const seen = new Set<string>();
-    while (p && !seen.has(p.id)) {
-      seen.add(p.id);
-      d++;
-      p = parentOf.get(p.id) ?? null;
-    }
-    return d;
-  };
+  const nesting = nodeNesting(doc);
   const shapes = doc.nodes.map((node, index) => {
-    const parent = parentOf.get(node.id) ?? null;
+    const { parent, depth } = nesting.get(node.id)!;
     const origin = parent ? { x: parent.x, y: parent.y } : { x: 0, y: 0 };
     return {
       index,
@@ -44,7 +31,7 @@ export function flowNodes(doc: CanvasDocument): FlowNodeShape[] {
         ...(parent ? { parentId: parent.id } : {}),
         position: { x: node.x - origin.x, y: node.y - origin.y },
         parentOrigin: origin,
-        depth: depthOf(node),
+        depth,
         node,
       } satisfies FlowNodeShape,
     };
@@ -54,20 +41,7 @@ export function flowNodes(doc: CanvasDocument): FlowNodeShape[] {
   return shapes.map((s) => s.shape);
 }
 
-/** The side of `from` facing `to`, for an edge that does not name one. */
-export function facingSides(from: CanvasNode, to: CanvasNode): { fromSide: CanvasSide; toSide: CanvasSide } {
-  const dx = to.x + to.width / 2 - (from.x + from.width / 2);
-  const dy = to.y + to.height / 2 - (from.y + from.height / 2);
-  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? { fromSide: 'right', toSide: 'left' } : { fromSide: 'left', toSide: 'right' };
-  return dy >= 0 ? { fromSide: 'bottom', toSide: 'top' } : { fromSide: 'top', toSide: 'bottom' };
-}
-
-export function edgeSides(edge: CanvasEdge, byId: Map<string, CanvasNode>): { fromSide: CanvasSide; toSide: CanvasSide } {
-  const from = byId.get(edge.fromNode);
-  const to = byId.get(edge.toNode);
-  const auto = from && to ? facingSides(from, to) : { fromSide: 'right' as const, toSide: 'left' as const };
-  return { fromSide: edge.fromSide ?? auto.fromSide, toSide: edge.toSide ?? auto.toSide };
-}
+export { edgeSides, facingSides } from '@open-artifact/shared';
 
 /** Zoom levels where detail drops away. */
 export const LOD = {

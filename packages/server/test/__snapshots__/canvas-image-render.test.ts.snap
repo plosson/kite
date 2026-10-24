@@ -1,0 +1,48 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the SVG of a canvas > has the same structure for the same canvas 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -32 964 324" width="964" height="324">
+<defs>
+<style>@font-face{font-family:'Kite Inter';font-weight:400;font-style:normal;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;src:url(data:font/woff2;…) format('woff2')}@font-face{font-family:'Kite Inter';font-weight:500;font-style:normal;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;src:url(data:font/woff2;…) format('woff2')}@font-face{font-family:'Kite Inter';font-weight:600;font-style:normal;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;src:url(data:font/woff2;…) format('woff2')}</style>
+<marker id="k0" viewBox="-10 -10 20 20" refX="0" refY="0" markerWidth="15" markerHeight="15" markerUnits="userSpaceOnUse" orient="auto">
+<polyline points="5,-4 0,0 5,4 5,-4" stroke-linecap="round" stroke-linejoin="round" stroke="#b1b1b7" fill="#b1b1b7" stroke-width="1"/>
+</marker>
+<marker id="k1" viewBox="-10 -10 20 20" refX="0" refY="0" markerWidth="15" markerHeight="15" markerUnits="userSpaceOnUse" orient="auto">
+<polyline points="-5,-4 0,0 -5,4 -5,-4" stroke-linecap="round" stroke-linejoin="round" stroke="#b1b1b7" fill="#b1b1b7" stroke-width="1"/>
+</marker>
+<symbol id="k2" viewBox="0 0 24 24">
+<path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>
+<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/>
+<path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/>
+<path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/>
+</symbol>
+<filter id="k3" x="-0.02" y="-0.06" width="1.05" height="1.13">
+<feGaussianBlur stdDeviation="1"/>
+</filter>
+<filter id="k4" x="-0.1" y="-0.25" width="1.2" height="1.5">
+<feGaussianBlur stdDeviation="6"/>
+</filter>
+</defs>
+<rect x="-32" y="-32" width="964" height="324" fill="#fbfaf9"/>
+<rect x="1" y="1" width="558" height="258" rx="7" fill="none" stroke="#e5e2e0" stroke-width="2" stroke-dasharray="6 4"/>
+<use href="#k2" x="14" y="10" width="20" height="20" fill="none" stroke="#615d59" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="40" y="24" font-family="&#39;Kite Inter&#39;, &#39;Inter&#39;, sans-serif" font-size="12" font-weight="600" letter-spacing="-0.08" xml:space="preserve" style="white-space:pre" fill="#615d59">Launch</text>
+<rect x="700" y="61" width="200" height="80" rx="6" fill="#000" fill-opacity="0.08" filter="url(#k3)"/>
+<rect x="700" y="60" width="200" height="80" rx="6" fill="#ffffff"/>
+<rect x="700.5" y="60.5" width="199" height="79" rx="5.5" fill="none" stroke="#e5e2e0" stroke-width="1"/>
+<text x="709" y="84" font-family="&#39;Kite Inter&#39;, &#39;Inter&#39;, sans-serif" font-size="14" font-weight="400" letter-spacing="-0.08" xml:space="preserve" style="white-space:pre" fill="#211f1c">Outside the group</text>
+<path d="M234,100 C280,100 280,100 326,100" fill="none" stroke="#b1b1b7" stroke-width="1" marker-start="url(#k0)" marker-end="url(#k1)"/>
+<rect x="261.36" y="89.5" width="37.27" height="21" rx="4" fill="#ffffff"/>
+<text x="267.36" y="103.6" font-family="&#39;Kite Inter&#39;, &#39;Inter&#39;, sans-serif" font-size="12" font-weight="500" letter-spacing="-0.08" xml:space="preserve" style="white-space:pre" fill="#615d59">then</text>
+<path d="M534 100L554 100L615 100L615 100L676 100L696 100" fill="none" stroke="#b1b1b7" stroke-width="1" stroke-dasharray="4 3"/>
+<rect x="30" y="61" width="200" height="80" rx="6" fill="#000" fill-opacity="0.06" filter="url(#k3)"/>
+<rect x="30" y="64" width="200" height="80" rx="6" fill="#000" fill-opacity="0.1" filter="url(#k4)"/>
+<rect x="30" y="60" width="200" height="80" rx="6" fill="#fff7e6"/>
+<rect x="30.5" y="60.5" width="199" height="79" rx="5.5" fill="none" stroke="#e5e2e0" stroke-width="1"/>
+<text x="39" y="84" font-family="&#39;Kite Inter&#39;, &#39;Inter&#39;, sans-serif" font-size="14" font-weight="400" letter-spacing="-0.08" xml:space="preserve" style="white-space:pre" fill="#211f1c">Ship it</text>
+<rect x="330" y="61" width="200" height="80" rx="6" fill="#000" fill-opacity="0.08" filter="url(#k3)"/>
+<rect x="330" y="60" width="200" height="80" rx="6" fill="#eef8f3"/>
+<rect x="330.5" y="60.5" width="199" height="79" rx="5.5" fill="none" stroke="#30a46c" stroke-width="1"/>
+<text x="339" y="84" font-family="&#39;Kite Inter&#39;, &#39;Inter&#39;, sans-serif" font-size="14" font-weight="400" letter-spacing="-0.08" xml:space="preserve" style="white-space:pre" fill="#211f1c">Measure</text>
+</svg>"
+`;

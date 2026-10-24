@@ -114,14 +114,7 @@ export function createRateLimiter(now: () => number = () => Date.now()): RateLim
       const who = options.by === 'user' ? (c.get('user')?.id ?? addressOf(c)) : addressOf(c);
       const retryAfter = windows.check(`${options.bucket}:${who}`, options, now());
 
-      if (retryAfter !== null) {
-        c.header('Retry-After', String(retryAfter));
-        throw new ApiError(
-          'rate_limited',
-          `That is more than this instance allows. Try again in ${describe(retryAfter)}.`,
-          { retryAfterSeconds: retryAfter },
-        );
-      }
+      if (retryAfter !== null) throw refusal(c, retryAfter);
 
       await next();
     },
@@ -150,6 +143,17 @@ export function addressOf(c: { req: { header: (name: string) => string | undefin
   const forwarded = c.req.header('x-forwarded-for');
   if (forwarded) return forwarded.split(',')[0]?.trim() ?? 'unknown';
   return c.req.header('x-real-ip') ?? 'unknown';
+}
+
+/**
+ * The answer to a caller over a limit: Retry-After, and the error to throw.
+ * For a route that checks a budget itself, part way through, with `check`.
+ */
+export function refusal(c: { header: (name: string, value: string) => void }, retryAfter: number): ApiError {
+  c.header('Retry-After', String(retryAfter));
+  return new ApiError('rate_limited', `That is more than this instance allows. Try again in ${describe(retryAfter)}.`, {
+    retryAfterSeconds: retryAfter,
+  });
 }
 
 function describe(seconds: number): string {

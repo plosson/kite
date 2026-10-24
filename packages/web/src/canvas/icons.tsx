@@ -13,7 +13,7 @@
  * of a data: URI, where a browser runs no script and loads nothing else.
  */
 import { createElement, useEffect, useState } from 'react';
-import { assetId, lucideName, svgDataUri, type CanvasAsset, type CanvasDocument, type CanvasIcon } from '@open-artifact/shared';
+import { assetId, lucideName, NODE_LAYOUT, svgDataUri, type CanvasAsset, type CanvasDocument, type CanvasIcon } from '@open-artifact/shared';
 import iconNodesUrl from 'lucide-static/icon-nodes.json?url';
 import tagsUrl from 'lucide-static/tags.json?url';
 import { paint } from './look.js';
@@ -94,7 +94,7 @@ export function LucideGlyph({ shapes, size, colour, label }: { shapes: LucideSha
 }
 
 /** The default size of an icon beside text, and above it. */
-export const ICON_SIZE = { left: 20, top: 32 } as const;
+export const ICON_SIZE = NODE_LAYOUT.iconSize;
 
 /** A node's icon, sized and coloured, or nothing while Lucide's data is on its way. */
 export function NodeIcon({
