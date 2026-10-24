@@ -38,6 +38,24 @@ describe('the canvas save queue', () => {
     ]);
   });
 
+  it('folds plain field edits but keeps style patches apart, since they merge key by key', async () => {
+    const { queue, sent } = harness();
+    queue.push({ op: 'update', id: 'a', set: { text: 'h' } });
+    queue.push({ op: 'update', id: 'a', set: { text: 'hi' } });
+    queue.push({ op: 'update', id: 'b', set: { kite: { style: { fill: '4' } } } });
+    queue.push({ op: 'update', id: 'b', set: { kite: { style: { radius: 12 } } } });
+    queue.push({ op: 'theme', set: { grid: 'lines' } });
+    queue.push({ op: 'theme', set: { background: '#ffffff' } });
+    await queue.flush();
+    expect(sent[0]?.ops).toEqual([
+      { op: 'update', id: 'a', set: { text: 'hi' } },
+      { op: 'update', id: 'b', set: { kite: { style: { fill: '4' } } } },
+      { op: 'update', id: 'b', set: { kite: { style: { radius: 12 } } } },
+      { op: 'theme', set: { grid: 'lines' } },
+      { op: 'theme', set: { background: '#ffffff' } },
+    ]);
+  });
+
   it('re-reads and retries once on a version conflict', async () => {
     const { queue, sent, version } = harness(true);
     queue.push({ op: 'update', id: 'a', set: { text: 'hi' } });

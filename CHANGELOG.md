@@ -29,6 +29,30 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
+## Unreleased
+
+### Give a canvas its own look
+
+> **As an author,** I want to choose colours, fonts and icons on my canvas,
+> **so that** a diagram is easy to read at a glance.
+
+Open a canvas that you own and click Style. A panel opens next to the canvas.
+Select one or more nodes to change their fill, border, corners, shadow, font,
+text size, weight and alignment. Select edges to change their colour, width,
+line, curve, arrows and label. Select nothing to set the canvas theme: the
+background, the grid and the default look of cards, groups and edges.
+
+Click Icon to put an icon on a node. Search the Lucide icons, or upload or
+paste your own SVG. Kite cleans each SVG before it keeps it. Kite removes
+scripts, links and everything else that is not a drawing. Kite shows the
+SVG only as an image.
+
+Your agent can do the same through the canvas operations. A strict JSON
+Canvas export leaves out the Kite look. The colours from JSON Canvas still
+show.
+
+---
+
 ## 24 October 2026 (1.4.0)
 
 ### Edit a canvas in the browser

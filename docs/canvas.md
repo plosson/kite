@@ -45,12 +45,15 @@ Owner only. Up to 500 operations. All or nothing. One batch is one new version.
 | Op           | Fields                                                     |
 |--------------|------------------------------------------------------------|
 | `add`        | `node`, `tempId?`, `id?`, `in?`, `near?`, `side?`          |
-| `update`     | `id`, `set`, `unset?` (edges: label, color, fromSide, toSide) |
+| `update`     | `id`, `set`, `unset?` (edges: label, color, fromSide, toSide, fromEnd, toEnd) |
 | `move`       | `id`, `x`, `y` (a group carries what is inside it)         |
 | `resize`     | `id`, `width`, `height`                                    |
 | `delete`     | `id` (a node takes its edges with it)                      |
 | `connect`    | `from`, `to`, `tempId?`, `label?`, `fromSide?`, `toSide?`  |
 | `disconnect` | `id`                                                       |
+| `theme`      | `set` (merged into the canvas theme; `null` removes it)    |
+| `addAsset`   | `svg`, `name?`, `tempId?`, `id?` (a custom SVG icon)       |
+| `deleteAsset`| `id` (refused while a node shows it)                       |
 
 Later operations may name an earlier one by its `tempId`. The response has
 `version`, `ids` (tempId → id) and `touched`.
@@ -79,6 +82,109 @@ curl -s -X POST "$KITE/api/artifacts/$ID/canvas/ops" \
         {"op": "connect", "from": "n1", "to": "q", "label": "asks"}]}'
 ```
 
+## Look: styles, icons and theme
+
+Everything about how a canvas looks is stored under `kite` keys, so a strict
+JSON Canvas export (`format=jsoncanvas-strict`) drops it and stays a valid
+JSON Canvas 1.0 file. The spec's own `color` (a preset `"1"`…`"6"` or a hex
+colour) still works: it colours a node's border and tints its fill, and
+colours an edge. A `kite.style` drawn on top wins.
+
+What a node looks like is worked out in this order, each step winning over
+the one before: Kite's default card → the canvas theme → the spec `color` →
+the node's own `kite.style`.
+
+**Node style** (`kite.style` on text, link, Kite and group nodes):
+
+| Key             | Value                                              |
+|-----------------|----------------------------------------------------|
+| `fill`, `borderColor`, `textColor` | a colour (below)                |
+| `borderWidth`   | 0 to 16 (0: no border)                             |
+| `borderStyle`   | `solid`, `dashed`, `dotted`                        |
+| `radius`        | 0 to 96                                            |
+| `font`          | `sans`, `inter`, `grotesk`, `serif`, `mono`, `hand` |
+| `fontSize`      | 8 to 96                                            |
+| `fontWeight`    | 300, 400, 500, 600, 700, 800                       |
+| `textAlign`     | `left`, `center`, `right`                          |
+| `verticalAlign` | `top`, `middle`, `bottom`                          |
+| `shadow`        | `none`, `sm`, `md`, `lg`                           |
+
+Groups also take `labelColor`, `labelFont`, `labelSize`, `labelWeight` and
+`labelBackground` for their name.
+
+**Edge style** (`kite.style` on an edge): `width` (1 to 12), `line` (`solid`,
+`dashed`, `dotted`), `curve` (`bezier`, `straight`, `step`) and the same five
+`label*` keys. The colour is the spec's `color`, and the arrow ends are the
+spec's `fromEnd` / `toEnd` (`none` or `arrow`).
+
+A colour is a preset `"1"`…`"6"`, `#rgb`, `#rrggbb`, `#rrggbbaa` or
+`transparent`.
+
+An `update` with `set.kite.style` merges into the style key by key: a key set
+to `null` goes back to the default, and `"style": null` removes the whole
+style. Unknown keys and bad values refuse the batch.
+
+**Fonts.** The six fonts are a fixed set. Apart from `sans` (the page's own
+font), they are served by Kite itself (Inter, Space Grotesk, Source Serif 4,
+JetBrains Mono, Caveat), never from a font CDN, and are only loaded on a page
+that shows a canvas.
+
+**Theme** (top-level `kite.theme`, set with the `theme` op): `background`,
+`grid` (`dots`, `lines`, `cross`, `none`), `gridColor`, and default styles
+`node`, `group` and `edge` (`edge` may also give a `color`, used by edges that
+name none). It is merged like a style.
+
+**Icons** (`kite.icon` on a node): `{ name, position?, size?, color? }`.
+
+- `name` is `lucide:<icon>` for any [Lucide](https://lucide.dev) icon
+  (`lucide:server`, `lucide:database`…), or `asset:<id>` for one of this
+  canvas's custom SVGs. An unknown Lucide name is refused.
+- `position` is `left` of the text (default) or `top`, large above it.
+- `size` is 12 to 160 pixels (default 20 on the left, 32 on top).
+- `color` tints a Lucide icon. A custom SVG keeps its own colours.
+
+Setting `set.kite.icon` replaces the icon; `null` removes it. The Lucide
+icons ship with Kite and are loaded only when a canvas uses one, or when the
+icon picker opens.
+
+### Custom SVG icons
+
+A custom SVG is kept once per canvas, in the top-level `kite.assets` map
+(`{ "<id>": { "type": "svg", "svg": "…", "name": "…" } }`), and any number
+of nodes show it by naming `asset:<id>`. Keeping it inside the canvas
+document means a version, a restore and an export carry their icons with
+them, and nothing outside the canvas has to be kept in step. A strict export
+drops it with the other `kite` keys.
+
+`addAsset` adds one: `{ "op": "addAsset", "tempId": "logo", "svg": "<svg …>",
+"name": "Logo" }`. Later operations in the same batch can say
+`asset:logo`; the response's `ids` gives the real id. `deleteAsset` removes
+one, and is refused while a node still shows it. A canvas has at most 100
+assets, each at most 64 KB.
+
+The server sanitises every SVG on every write (ops, publish, update and
+restore), and the browser uses the same code for its preview, so both give
+the same bytes. The sanitiser does not filter the text it was given: it
+parses it with a strict XML reader and writes a new document from what it
+understood.
+
+- Only an allowlist of drawing elements is kept (shapes, paths, text,
+  groups, `defs`/`use`/`symbol`, gradients, clip paths, masks, patterns,
+  markers and a few filters). Everything else is removed with what is inside
+  it: `script`, `style`, `foreignObject`, `image`, `a`, animation, editor
+  metadata.
+- Only an allowlist of presentation attributes is kept. Event handlers
+  (`on*`) go. `href` and `url(…)` survive only when they point inside the
+  SVG (`#id`). A `style` attribute keeps only allowlisted properties.
+- A DOCTYPE with entity definitions, unknown entities and malformed XML are
+  refused. So is an SVG that has nothing left to draw, one too deeply nested,
+  with too many elements, or with `<use>` pointing at something that holds
+  another `<use>`.
+
+The result is only ever drawn as an image (`<img>` with a `data:` URI),
+never put into the page, so even something the sanitiser missed could not run
+a script or load anything.
+
 ## In the browser
 
 The owner edits a canvas directly:
@@ -89,6 +195,11 @@ The owner edits a canvas directly:
 - drag from a side handle to another node to connect those two sides;
   double-click an edge to label or remove it;
 - `Delete` removes the selection (deleting a group keeps what was inside);
+- **Style** opens a panel beside the canvas. With nodes or edges selected it
+  styles all of them at once (one version); with nothing selected it edits
+  the canvas theme. **Icon…** opens a picker that searches the Lucide icons,
+  or takes an SVG file or pasted SVG, shows what the sanitiser keeps, and
+  reuses the canvas's custom icons;
 - `Ctrl/Cmd+Z` undoes, `Shift+Ctrl/Cmd+Z` or `Ctrl+Y` redoes. Undo is sent to
   the server as operations and only takes back your own change; if somebody
   changed the same thing since, it says so instead of overwriting.

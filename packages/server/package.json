@@ -19,6 +19,7 @@
     "drizzle-orm": "^0.45.2",
     "hast-util-to-string": "^3.0.1",
     "hono": "^4.12.31",
+    "lucide-static": "^1.61.0",
     "nanoid": "^6.0.0",
     "nodemailer": "^9.0.3",
     "parse5": "^8.0.1",

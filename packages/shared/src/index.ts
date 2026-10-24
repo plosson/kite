@@ -29,4 +29,6 @@ export type DiagramLanguage = (typeof DIAGRAM_LANGUAGES)[number];
 
 export * from './api-types.js';
 export * from './canvas.js';
+export * from './canvas-style.js';
+export * from './canvas-svg.js';
 export * from './expiry.js';

@@ -39,6 +39,7 @@ import { requireAccess } from '../../artifacts/access.js';
 import type { ArtifactDetail } from '../../artifacts/service.js';
 import { nowIso } from '../../time.js';
 import { recordView } from './views.js';
+import { requireKnownIcons } from '../../canvas/icons.js';
 
 export function registerCanvasRoutes(app: Hono<AppEnv>, context: AppContext): void {
   const { artifacts, sharing, config, rateLimiter } = context;
@@ -73,7 +74,7 @@ export function registerCanvasRoutes(app: Hono<AppEnv>, context: AppContext): vo
       ...doc,
       // Injected on every read and never stored, so a saved copy always says
       // which document and version it came from, and the store cannot drift.
-      kite: { format: 'kite-canvas', formatVersion: 1, docId: artifact.id, version: artifact.version },
+      kite: { ...doc.kite, format: 'kite-canvas', formatVersion: 1, docId: artifact.id, version: artifact.version },
     });
   });
 
@@ -136,6 +137,7 @@ export function registerCanvasRoutes(app: Hono<AppEnv>, context: AppContext): vo
       }
       throw error;
     }
+    requireKnownIcons(result.doc);
 
     const applied = Array.isArray(body.ops) ? body.ops.length : 0;
     if (dryRun) {

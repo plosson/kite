@@ -55,3 +55,15 @@
   stroke: #e5484d !important;
   stroke-dasharray: 6 4;
 }
+
+/* An icon on a node: a fixed box, so text beside it does not move while Lucide loads. */
+.kite-canvas .kite-node-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.kite-canvas .kite-node-icon > img,
+.kite-canvas .kite-node-icon > svg {
+  display: block;
+}

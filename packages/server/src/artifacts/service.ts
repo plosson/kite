@@ -31,6 +31,7 @@ import {
 import type { Db } from '../db/index.js';
 import { artifacts, artifactVersions, artifactStars, type ArtifactRow } from '../db/schema.js';
 import { newId, newSlug } from '../ids.js';
+import { requireKnownIcons } from '../canvas/icons.js';
 import { nowIso } from '../time.js';
 import { ApiError, notFound } from '../errors.js';
 import { deriveTitle } from './title.js';
@@ -633,7 +634,9 @@ export class ArtifactService {
           );
         }
         try {
-          return this.requireCanvasSize(serialiseCanvas(parseCanvas(content)));
+          const doc = parseCanvas(content);
+          requireKnownIcons(doc);
+          return this.requireCanvasSize(serialiseCanvas(doc));
         } catch (error) {
           if (error instanceof CanvasError) {
             throw new ApiError('validation_failed', error.message);

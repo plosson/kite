@@ -11,11 +11,35 @@
  * for the optimistic view, so the two can never disagree about what an
  * operation means.
  *
- * Scope of this first version, on purpose: `text`, `link` and `group` nodes,
- * plus the Kite "kite" kind (a `link` node pointing at another Kite document,
- * shown as a card or a sandboxed preview). `file` nodes are refused: Kite has
- * no asset store, and the content policy blocks remote images anyway.
+ * Scope, on purpose: `text`, `link` and `group` nodes, plus the Kite "kite"
+ * kind (a `link` node pointing at another Kite document, shown as a card or a
+ * sandboxed preview). `file` nodes are refused: Kite keeps no files for a
+ * canvas, and the content policy blocks remote images anyway.
+ *
+ * How a canvas looks (styles, icons, theme defaults, custom SVG icons) is in
+ * canvas-style.ts and canvas-svg.ts, and is stored under the same `kite` keys.
  */
+
+import {
+  assetId,
+  checkAsset,
+  checkAssets,
+  checkEdgeStyle,
+  checkIcon,
+  checkNodeStyle,
+  checkTheme,
+  CanvasStyleError,
+  mergeStyle,
+  mergeTheme,
+  stylePatch,
+  themePatch,
+  STYLE_LIMITS,
+  type CanvasAsset,
+  type CanvasEdgeStyle,
+  type CanvasIcon,
+  type CanvasNodeStyle,
+  type CanvasTheme,
+} from './canvas-style.js';
 
 export const CANVAS_LIMITS = {
   /** A canvas is smaller than other documents: every version is a full copy. */
@@ -38,6 +62,10 @@ export interface CanvasNodeKite {
   ref?: string;
   /** How a 'kite' node is drawn. */
   view?: 'card' | 'preview';
+  /** How the node looks. Groups may also style their label. */
+  style?: CanvasNodeStyle;
+  /** A Lucide icon or one of this canvas's custom SVGs, drawn with the text. */
+  icon?: CanvasIcon;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -80,13 +108,29 @@ export interface CanvasEdge {
   toEnd?: CanvasEnd;
   color?: string;
   label?: string;
-  kite?: { createdAt?: string };
+  kite?: CanvasEdgeKite;
+}
+
+/** What Kite adds to an edge. Arrow ends are the spec's own fromEnd and toEnd. */
+export interface CanvasEdgeKite {
+  style?: CanvasEdgeStyle;
+  createdAt?: string;
+}
+
+/** What Kite adds at the top level of a canvas. */
+export interface CanvasDocumentKite {
+  format: 'kite-canvas';
+  formatVersion: 1;
+  /** Canvas-wide defaults: background, grid, and default node, group and edge styles. */
+  theme?: CanvasTheme;
+  /** Custom SVG icons, sanitised, by id. A node shows one with icon.name "asset:<id>". */
+  assets?: Record<string, CanvasAsset>;
 }
 
 export interface CanvasDocument {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
-  kite?: { format: 'kite-canvas'; formatVersion: 1 };
+  kite?: CanvasDocumentKite;
 }
 
 /** A problem with a document or an operation, phrased for whoever sent it. */
@@ -103,8 +147,19 @@ export class CanvasError extends Error {
 
 const SIDES: readonly string[] = ['top', 'right', 'bottom', 'left'];
 const ENDS: readonly string[] = ['none', 'arrow'];
-const NODE_KITE_KEYS = new Set(['kind', 'ref', 'view', 'createdAt', 'updatedAt']);
-const EDGE_KITE_KEYS = new Set(['createdAt']);
+const NODE_KITE_KEYS = new Set(['kind', 'ref', 'view', 'style', 'icon', 'createdAt', 'updatedAt']);
+const EDGE_KITE_KEYS = new Set(['style', 'createdAt']);
+const DOCUMENT_KITE_KEYS = new Set(['format', 'formatVersion', 'docId', 'version', 'theme', 'assets']);
+
+/** Runs a style check, reporting its problem as a CanvasError like every other. */
+function styled<T>(check: () => T): T {
+  try {
+    return check();
+  } catch (error) {
+    if (error instanceof CanvasStyleError) throw new CanvasError(error.message);
+    throw error;
+  }
+}
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const ARTIFACT_ID_PATTERN = /^art_[A-Za-z0-9_-]{4,64}$/;
 
@@ -167,6 +222,10 @@ function checkNodeKite(raw: unknown, where: string, type: CanvasNodeType): Canva
   } else if (raw.ref !== undefined || raw.view !== undefined) {
     throw new CanvasError(`${where}: kite.ref and kite.view only go on a node with kite.kind "kite".`);
   }
+  const style = styled(() => checkNodeStyle(raw.style, `${where}: kite.style`, type === 'group'));
+  if (style) kite.style = style;
+  const icon = styled(() => checkIcon(raw.icon, `${where}: kite.icon`));
+  if (icon) kite.icon = icon;
   for (const key of ['createdAt', 'updatedAt'] as const) {
     if (raw[key] !== undefined) {
       if (typeof raw[key] !== 'string' || (raw[key] as string).length > 40) {
@@ -267,7 +326,12 @@ export function checkEdge(raw: unknown, nodeIds: Set<string>, where = 'edge'): C
     for (const key of Object.keys(raw.kite)) {
       if (!EDGE_KITE_KEYS.has(key)) throw new CanvasError(`${at}: unknown key "kite.${key}".`);
     }
-    if (typeof raw.kite.createdAt === 'string') edge.kite = { createdAt: raw.kite.createdAt };
+    const given = raw.kite;
+    const kite: CanvasEdgeKite = {};
+    const style = styled(() => checkEdgeStyle(given.style, `${at}: kite.style`));
+    if (style) kite.style = style;
+    if (typeof given.createdAt === 'string') kite.createdAt = given.createdAt;
+    if (Object.keys(kite).length > 0) edge.kite = kite;
   }
   return edge;
 }
@@ -290,6 +354,7 @@ export function checkCanvas(raw: unknown): CanvasDocument {
       throw new CanvasError(`Unknown top-level key "${key}". Kite extras go under "kite".`);
     }
   }
+  const kite = checkDocumentKite(raw.kite);
 
   const seen = new Set<string>();
   const nodes = rawNodes.map((n, i) => {
@@ -305,10 +370,40 @@ export function checkCanvas(raw: unknown): CanvasDocument {
     seen.add(edge.id);
     return edge;
   });
-  // The top-level kite object holds only what is true of every version. The
-  // document id and version number are the server's, injected on read, never
-  // stored, so a copied file can never claim to be a version it is not.
-  return { nodes, edges, kite: { format: 'kite-canvas', formatVersion: 1 } };
+  const doc: CanvasDocument = { nodes, edges, kite };
+  checkAssetRefs(doc);
+  return doc;
+}
+
+/**
+ * The top-level kite object holds only what is true of every version: the
+ * format, the theme and the custom icons. The document id and version number
+ * are the server's, injected on read and dropped here, never stored, so a
+ * copied file can never claim to be a version it is not.
+ */
+function checkDocumentKite(raw: unknown): CanvasDocumentKite {
+  const kite: CanvasDocumentKite = { format: 'kite-canvas', formatVersion: 1 };
+  if (raw === undefined) return kite;
+  if (!isObject(raw)) throw new CanvasError('The top-level "kite" must be an object.');
+  for (const key of Object.keys(raw)) {
+    if (!DOCUMENT_KITE_KEYS.has(key)) throw new CanvasError(`Unknown key "kite.${key}". The top-level kite holds theme and assets.`);
+  }
+  const theme = styled(() => checkTheme(raw.theme));
+  if (theme) kite.theme = theme;
+  const assets = styled(() => checkAssets(raw.assets));
+  if (assets) kite.assets = assets;
+  return kite;
+}
+
+/** Every custom icon a node shows is one this canvas holds. */
+function checkAssetRefs(doc: CanvasDocument): void {
+  const assets = doc.kite?.assets ?? {};
+  for (const node of doc.nodes) {
+    const id = node.kite?.icon ? assetId(node.kite.icon) : null;
+    if (id !== null && !Object.hasOwn(assets, id)) {
+      throw new CanvasError(`node "${node.id}": its icon is asset "${id}", which this canvas does not have. Add it with an addAsset operation first.`);
+    }
+  }
 }
 
 /** Parses and checks stored or uploaded text. */
@@ -328,7 +423,12 @@ export function parseCanvas(content: string): CanvasDocument {
  */
 export function serialiseCanvas(doc: CanvasDocument): string {
   const lines = (items: unknown[]) => (items.length === 0 ? '[]' : `[\n${items.map((i) => `    ${JSON.stringify(i)}`).join(',\n')}\n  ]`);
-  const kite = doc.kite ?? { format: 'kite-canvas', formatVersion: 1 };
+  const kite: CanvasDocumentKite = {
+    format: 'kite-canvas',
+    formatVersion: 1,
+    ...(doc.kite?.theme ? { theme: doc.kite.theme } : {}),
+    ...(doc.kite?.assets ? { assets: doc.kite.assets } : {}),
+  };
   return `{\n  "nodes": ${lines(doc.nodes)},\n  "edges": ${lines(doc.edges)},\n  "kite": ${JSON.stringify(kite)}\n}\n`;
 }
 
@@ -367,6 +467,22 @@ export function nodeText(node: CanvasNode): string {
 // Operations
 // ---------------------------------------------------------------------------
 
+/** A partial style for an update: keys given replace, keys set to null are removed. */
+export type CanvasStylePatch<T> = { [K in keyof T]?: T[K] | null };
+
+/**
+ * The kite part of a node in an add or an update. In an update, `style` merges
+ * into the node's style (null removes a key, or the whole style), and `icon`
+ * replaces the icon (null removes it). Timestamps are the server's.
+ */
+export interface CanvasNodeKitePatch {
+  kind?: 'kite';
+  ref?: string;
+  view?: 'card' | 'preview';
+  style?: CanvasStylePatch<CanvasNodeStyle> | null;
+  icon?: CanvasIcon | null;
+}
+
 export type CanvasNodeFields = {
   type?: CanvasNodeType;
   text?: string;
@@ -377,7 +493,7 @@ export type CanvasNodeFields = {
   y?: number;
   width?: number;
   height?: number;
-  kite?: CanvasNodeKite;
+  kite?: CanvasNodeKitePatch;
 };
 
 export type CanvasEdgeFields = {
@@ -385,7 +501,23 @@ export type CanvasEdgeFields = {
   color?: string;
   fromSide?: CanvasSide;
   toSide?: CanvasSide;
+  fromEnd?: CanvasEnd;
+  toEnd?: CanvasEnd;
+  kite?: { style?: CanvasStylePatch<CanvasEdgeStyle> | null };
 };
+
+/** A theme patch: top-level keys replace (null removes); node, group and edge merge like a style. */
+export type CanvasThemePatch = {
+  background?: string | null;
+  grid?: CanvasTheme['grid'] | null;
+  gridColor?: string | null;
+  node?: CanvasStylePatch<CanvasNodeStyle> | null;
+  group?: CanvasStylePatch<CanvasNodeStyle> | null;
+  edge?: CanvasStylePatch<NonNullable<CanvasTheme['edge']>> | null;
+};
+
+const EDGE_FIELDS = ['label', 'color', 'fromSide', 'toSide', 'fromEnd', 'toEnd'] as const;
+type CanvasEdgeKey = (typeof EDGE_FIELDS)[number];
 
 export type CanvasOp =
   | {
@@ -400,7 +532,7 @@ export type CanvasOp =
       side?: CanvasSide;
     }
   | { op: 'update'; id: string; set?: CanvasNodeFields; unset?: Array<'color' | 'label'> }
-  | { op: 'update'; id: string; set?: CanvasEdgeFields; unset?: Array<'color' | 'label' | 'fromSide' | 'toSide'> }
+  | { op: 'update'; id: string; set?: CanvasEdgeFields; unset?: CanvasEdgeKey[] }
   | { op: 'move'; id: string; x: number; y: number }
   | { op: 'resize'; id: string; width: number; height: number }
   | { op: 'delete'; id: string }
@@ -413,22 +545,31 @@ export type CanvasOp =
       label?: string;
       fromSide?: CanvasSide;
       toSide?: CanvasSide;
+      fromEnd?: CanvasEnd;
+      toEnd?: CanvasEnd;
       color?: string;
+      kite?: { style?: CanvasEdgeStyle };
     }
-  | { op: 'disconnect'; id: string };
+  | { op: 'disconnect'; id: string }
+  /** Changes the canvas-wide theme. `set: null` removes it. */
+  | { op: 'theme'; set: CanvasThemePatch | null }
+  /** Adds a custom SVG icon to the canvas, sanitised. Nodes show it with icon.name "asset:<id>". */
+  | { op: 'addAsset'; tempId?: string; id?: string; svg: string; name?: string }
+  /** Removes a custom SVG icon no node uses any more. */
+  | { op: 'deleteAsset'; id: string };
 
 export interface ApplyContext {
   /** ISO timestamp stamped on what this batch creates or changes. */
   now: string;
-  /** Makes a fresh id with the given prefix. Injected so tests are repeatable. */
-  newId: (prefix: 'n' | 'e') => string;
+  /** Makes a fresh id with the given prefix (node, edge, asset). Injected so tests are repeatable. */
+  newId: (prefix: 'n' | 'e' | 'a') => string;
 }
 
 export interface ApplyResult {
   doc: CanvasDocument;
   /** tempId (or given id) → the id it got. */
   ids: Record<string, string>;
-  /** Every node or edge id this batch created, changed or removed. */
+  /** Every node, edge or asset id this batch created, changed or removed. */
   touched: string[];
 }
 
@@ -564,17 +705,31 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
     return i;
   };
   const taken = (id: string) => doc.nodes.some((n) => n.id === id) || doc.edges.some((e) => e.id === id);
-  const freshId = (given: unknown, prefix: 'n' | 'e', index: number): string => {
+  const assetTaken = (id: string) => Object.hasOwn(doc.kite?.assets ?? {}, id);
+  const freshId = (given: unknown, prefix: 'n' | 'e' | 'a', index: number): string => {
+    const used = prefix === 'a' ? assetTaken : taken;
     if (given !== undefined) {
       if (typeof given !== 'string' || !ID_PATTERN.test(given)) throw new CanvasError('id must be 1 to 64 letters, digits, "_" or "-".', index);
-      if (taken(given)) throw new CanvasError(`The id "${given}" is already used on this canvas.`, index);
+      if (used(given)) throw new CanvasError(`The id "${given}" is already used on this canvas.`, index);
       return given;
     }
     for (let attempt = 0; attempt < 5; attempt++) {
       const id = ctx.newId(prefix);
-      if (!taken(id)) return id;
+      if (!used(id)) return id;
     }
     throw new CanvasError('Could not make a new id.', index);
+  };
+  /** An icon naming an asset by the tempId an earlier addAsset in this batch gave it. */
+  const resolveIcon = (icon: unknown): unknown => {
+    if (!isObject(icon) || typeof icon.name !== 'string' || !icon.name.startsWith('asset:')) return icon;
+    const ref = icon.name.slice(6);
+    return ids[ref] ? { ...icon, name: `asset:${ids[ref]}` } : icon;
+  };
+  const withKite = (patch: Partial<CanvasDocumentKite>): CanvasDocumentKite => {
+    const next: CanvasDocumentKite = { format: 'kite-canvas', formatVersion: 1, ...(doc.kite ?? {}), ...patch };
+    if (next.theme === undefined) delete next.theme;
+    if (next.assets === undefined) delete next.assets;
+    return next;
   };
   const remember = (tempId: unknown, id: string, index: number) => {
     if (tempId === undefined) return;
@@ -614,6 +769,8 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
             place = placeFree(doc, size);
           }
           const id = freshId(raw.id, 'n', index);
+          const givenKite = (isObject(fields.kite) ? fields.kite : {}) as Record<string, unknown>;
+          if (fields.kite !== undefined && !isObject(fields.kite)) throw new CanvasError('"kite" must be an object.');
           const node = checkNode({
             ...fields,
             type,
@@ -621,7 +778,12 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
             ...place,
             width: Math.round(size.width),
             height: Math.round(size.height),
-            kite: { ...(fields.kite ?? {}), createdAt: ctx.now, updatedAt: ctx.now },
+            kite: {
+              ...givenKite,
+              ...(givenKite.icon === undefined ? {} : { icon: resolveIcon(givenKite.icon) }),
+              createdAt: ctx.now,
+              updatedAt: ctx.now,
+            },
           });
           doc.nodes.push(node);
           remember(raw.tempId, id, index);
@@ -635,16 +797,32 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
             const set = raw.set === undefined ? {} : raw.set;
             if (!isObject(set)) throw new CanvasError('"set" must be an object.');
             for (const key of Object.keys(set)) {
-              if (!['label', 'color', 'fromSide', 'toSide'].includes(key)) {
-                throw new CanvasError('An edge can change its label, color, fromSide and toSide. Disconnect it and connect again to change its ends.');
+              if (!(EDGE_FIELDS as readonly string[]).includes(key) && key !== 'kite') {
+                throw new CanvasError(
+                  `An edge can change its ${EDGE_FIELDS.join(', ')} and kite.style. Disconnect it and connect again to change the nodes it joins.`,
+                );
               }
             }
             const next: Record<string, unknown> = { ...current, ...set };
+            if (set.kite !== undefined) {
+              if (!isObject(set.kite)) throw new CanvasError('"kite" must be an object.');
+              for (const key of Object.keys(set.kite)) {
+                if (key !== 'style') throw new CanvasError(`An edge's kite can only change "style", not "${key}".`);
+              }
+              const patch = set.kite;
+              const kite: Record<string, unknown> = { ...(current.kite ?? {}) };
+              if (patch.style !== undefined) {
+                const style = styled(() => mergeStyle(current.kite?.style, patch.style, 'kite.style'));
+                if (style) kite.style = style;
+                else delete kite.style;
+              }
+              next.kite = kite;
+            }
             const unset = raw.unset ?? [];
             if (!Array.isArray(unset)) throw new CanvasError('"unset" must be an array.');
             for (const key of unset) {
-              if (!['label', 'color', 'fromSide', 'toSide'].includes(key)) {
-                throw new CanvasError('An edge can unset label, color, fromSide and toSide.');
+              if (!(EDGE_FIELDS as readonly string[]).includes(key)) {
+                throw new CanvasError(`An edge can unset ${EDGE_FIELDS.join(', ')}.`);
               }
               delete next[key];
             }
@@ -660,8 +838,16 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
           const next: Record<string, unknown> = { ...current, ...set };
           if (set.kite !== undefined) {
             if (!isObject(set.kite)) throw new CanvasError('"kite" must be an object.');
-            const { createdAt: _c, updatedAt: _u, ...given } = set.kite;
-            next.kite = { ...(current.kite ?? {}), ...given };
+            const { createdAt: _c, updatedAt: _u, style, icon, ...given } = set.kite;
+            const kite: Record<string, unknown> = { ...(current.kite ?? {}), ...given };
+            if (style !== undefined) {
+              const merged = styled(() => mergeStyle(current.kite?.style, style, 'kite.style'));
+              if (merged) kite.style = merged;
+              else delete kite.style;
+            }
+            if (icon === null) delete kite.icon;
+            else if (icon !== undefined) kite.icon = resolveIcon(icon);
+            next.kite = kite;
           }
           const unset = raw.unset ?? [];
           if (!Array.isArray(unset)) throw new CanvasError('"unset" must be an array.');
@@ -729,8 +915,10 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
               ...(raw.label === undefined ? {} : { label: raw.label }),
               ...(raw.fromSide === undefined ? {} : { fromSide: raw.fromSide }),
               ...(raw.toSide === undefined ? {} : { toSide: raw.toSide }),
+              ...(raw.fromEnd === undefined ? {} : { fromEnd: raw.fromEnd }),
+              ...(raw.toEnd === undefined ? {} : { toEnd: raw.toEnd }),
               ...(raw.color === undefined ? {} : { color: raw.color }),
-              kite: { createdAt: ctx.now },
+              kite: { ...connectKite(raw.kite), createdAt: ctx.now },
             },
             new Set(doc.nodes.map((n) => n.id)),
           );
@@ -747,9 +935,41 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
           touched.add(id);
           break;
         }
+        case 'theme': {
+          if (raw.set === undefined) throw new CanvasError('"theme" needs "set": the theme keys to change, or null to remove the theme.');
+          const merged = styled(() => mergeTheme(doc.kite?.theme, raw.set));
+          const theme = styled(() => checkTheme(merged, 'theme'));
+          doc.kite = withKite({ theme });
+          break;
+        }
+        case 'addAsset': {
+          const assets = doc.kite?.assets ?? {};
+          if (Object.keys(assets).length >= STYLE_LIMITS.maxAssets) {
+            throw new CanvasError(`A canvas can hold up to ${STYLE_LIMITS.maxAssets} custom SVG icons. Delete one it no longer uses first.`);
+          }
+          const id = freshId(raw.id, 'a', index);
+          const asset = styled(() => checkAsset({ type: 'svg', svg: raw.svg, ...(raw.name === undefined ? {} : { name: raw.name }) }, 'addAsset'));
+          doc.kite = withKite({ assets: { ...assets, [id]: asset } });
+          remember(raw.tempId, id, index);
+          touched.add(id);
+          break;
+        }
+        case 'deleteAsset': {
+          const id = resolve(raw.id);
+          const assets = doc.kite?.assets ?? {};
+          if (typeof id !== 'string' || !Object.hasOwn(assets, id)) throw new CanvasError(`There is no asset "${String(raw.id)}".`);
+          const users = doc.nodes.filter((n) => n.kite?.icon?.name === `asset:${id}`).map((n) => n.id);
+          if (users.length > 0) {
+            throw new CanvasError(`Asset "${id}" is the icon of ${users.length === 1 ? `node "${users[0]}"` : `${users.length} nodes`}. Change or remove those icons first.`);
+          }
+          const { [id]: _gone, ...rest } = assets;
+          doc.kite = withKite({ assets: Object.keys(rest).length > 0 ? rest : undefined });
+          touched.add(id);
+          break;
+        }
         default:
           throw new CanvasError(
-            'op must be one of add, update, move, resize, delete, connect, disconnect.',
+            'op must be one of add, update, move, resize, delete, connect, disconnect, theme, addAsset, deleteAsset.',
           );
       }
     } catch (error) {
@@ -762,7 +982,18 @@ export function applyCanvasOps(input: CanvasDocument, ops: unknown, ctx: ApplyCo
 
   if (doc.nodes.length > CANVAS_LIMITS.maxNodes) throw new CanvasError(`A canvas can hold up to ${CANVAS_LIMITS.maxNodes} nodes.`);
   if (doc.edges.length > CANVAS_LIMITS.maxEdges) throw new CanvasError(`A canvas can hold up to ${CANVAS_LIMITS.maxEdges} edges.`);
+  checkAssetRefs(doc);
   return { doc, ids, touched: [...touched] };
+}
+
+/** The kite part a connect may carry: only a style. */
+function connectKite(raw: unknown): CanvasEdgeKite {
+  if (raw === undefined) return {};
+  if (!isObject(raw)) throw new CanvasError('"kite" must be an object.');
+  for (const key of Object.keys(raw)) {
+    if (key !== 'style') throw new CanvasError(`A new edge's kite can only carry "style", not "${key}".`);
+  }
+  return raw.style === undefined ? {} : { style: raw.style as CanvasEdgeStyle };
 }
 
 // ---------------------------------------------------------------------------
@@ -778,6 +1009,8 @@ export interface CanvasNodeChange {
   resized: boolean;
   /** Text, url, label, colour or what a kite node points at changed. */
   edited: boolean;
+  /** Its own style or its icon changed. */
+  restyled: boolean;
 }
 
 export interface CanvasEdgeChange {
@@ -790,17 +1023,25 @@ export interface CanvasEdgeChange {
 export interface CanvasChanges {
   nodes: CanvasNodeChange[];
   edges: CanvasEdgeChange[];
+  /** Whether the canvas-wide theme changed. */
+  theme: boolean;
+  /** Custom SVG icons added to or removed from the canvas. */
+  assets: { added: string[]; removed: string[] };
 }
 
 function contentOf(node: CanvasNode): string {
   const { x: _x, y: _y, width: _w, height: _h, kite, ...rest } = node;
-  const { createdAt: _c, updatedAt: _u, ...k } = kite ?? {};
+  const { createdAt: _c, updatedAt: _u, style: _s, icon: _i, ...k } = kite ?? {};
   return JSON.stringify({ ...rest, kite: k });
 }
 
+function lookOf(node: CanvasNode): string {
+  return JSON.stringify({ style: node.kite?.style ?? null, icon: node.kite?.icon ?? null });
+}
+
 function edgeShape(edge: CanvasEdge): string {
-  const { kite: _k, ...rest } = edge;
-  return JSON.stringify(rest);
+  const { kite, ...rest } = edge;
+  return JSON.stringify({ ...rest, style: kite?.style ?? null });
 }
 
 /** What changed from one version to the next, node by node. Unchanged things are left out. */
@@ -811,17 +1052,18 @@ export function canvasChanges(from: CanvasDocument, to: CanvasDocument): CanvasC
   for (const n of to.nodes) {
     const old = before.get(n.id);
     if (!old || old.type !== n.type) {
-      if (old) nodes.push({ id: n.id, kind: 'removed', before: old, moved: false, resized: false, edited: false });
-      nodes.push({ id: n.id, kind: 'added', after: n, moved: false, resized: false, edited: false });
+      if (old) nodes.push({ id: n.id, kind: 'removed', before: old, moved: false, resized: false, edited: false, restyled: false });
+      nodes.push({ id: n.id, kind: 'added', after: n, moved: false, resized: false, edited: false, restyled: false });
       continue;
     }
     const moved = old.x !== n.x || old.y !== n.y;
     const resized = old.width !== n.width || old.height !== n.height;
     const edited = contentOf(old) !== contentOf(n);
-    if (moved || resized || edited) nodes.push({ id: n.id, kind: 'changed', before: old, after: n, moved, resized, edited });
+    const restyled = lookOf(old) !== lookOf(n);
+    if (moved || resized || edited || restyled) nodes.push({ id: n.id, kind: 'changed', before: old, after: n, moved, resized, edited, restyled });
   }
   for (const n of from.nodes) {
-    if (!after.has(n.id)) nodes.push({ id: n.id, kind: 'removed', before: n, moved: false, resized: false, edited: false });
+    if (!after.has(n.id)) nodes.push({ id: n.id, kind: 'removed', before: n, moved: false, resized: false, edited: false, restyled: false });
   }
   const edgesBefore = new Map(from.edges.map((e) => [e.id, e]));
   const edgesAfter = new Map(to.edges.map((e) => [e.id, e]));
@@ -832,7 +1074,17 @@ export function canvasChanges(from: CanvasDocument, to: CanvasDocument): CanvasC
     else if (edgeShape(old) !== edgeShape(e)) edges.push({ id: e.id, kind: 'changed', before: old, after: e });
   }
   for (const e of from.edges) if (!edgesAfter.has(e.id)) edges.push({ id: e.id, kind: 'removed', before: e });
-  return { nodes, edges };
+  const assetsBefore = from.kite?.assets ?? {};
+  const assetsAfter = to.kite?.assets ?? {};
+  return {
+    nodes,
+    edges,
+    theme: themePatch(from.kite?.theme, to.kite?.theme) !== null,
+    assets: {
+      added: Object.keys(assetsAfter).filter((id) => !Object.hasOwn(assetsBefore, id)),
+      removed: Object.keys(assetsBefore).filter((id) => !Object.hasOwn(assetsAfter, id)),
+    },
+  };
 }
 
 function fieldsOf(node: CanvasNode): CanvasNodeFields {
@@ -841,8 +1093,21 @@ function fieldsOf(node: CanvasNode): CanvasNodeFields {
   return { ...(rest as CanvasNodeFields), ...(Object.keys(k).length > 0 ? { kite: k as CanvasNodeKite } : {}) };
 }
 
+/** The kite patch that turns one node's kite into another's: style as a key patch, icon replaced. */
+function nodeKitePatch(before: CanvasNodeKite | undefined, after: CanvasNodeKite | undefined): CanvasNodeKitePatch | null {
+  const b = before ?? {};
+  const a = after ?? {};
+  const patch: CanvasNodeKitePatch = {};
+  if (a.kind !== b.kind && a.kind !== undefined) patch.kind = a.kind;
+  if (a.ref !== b.ref && a.ref !== undefined) patch.ref = a.ref;
+  if (a.view !== b.view && a.view !== undefined) patch.view = a.view;
+  const style = stylePatch(b.style, a.style);
+  if (style) patch.style = a.style === undefined ? null : (style as CanvasStylePatch<CanvasNodeStyle>);
+  if (JSON.stringify(a.icon ?? null) !== JSON.stringify(b.icon ?? null)) patch.icon = a.icon ?? null;
+  return Object.keys(patch).length === 0 ? null : patch;
+}
+
 const NODE_CONTENT_KEYS = ['text', 'url', 'label', 'color'] as const;
-const EDGE_KEYS = ['label', 'color', 'fromSide', 'toSide'] as const;
 
 /**
  * Operations that turn `from` into `to`. Undo sends canvasDiffOps(after, before)
@@ -853,6 +1118,13 @@ export function canvasDiffOps(from: CanvasDocument, to: CanvasDocument): CanvasO
   const changes = canvasChanges(from, to);
   const ops: CanvasOp[] = [];
   const target = new Map(to.nodes.map((n) => [n.id, n]));
+  // Icons first, so the nodes below can show them; removed ones last, once nothing shows them.
+  for (const id of changes.assets.added) {
+    const asset = to.kite!.assets![id]!;
+    ops.push({ op: 'addAsset', id, svg: asset.svg, ...(asset.name === undefined ? {} : { name: asset.name }) });
+  }
+  const theme = themePatch(from.kite?.theme, to.kite?.theme);
+  if (theme) ops.push({ op: 'theme', set: to.kite?.theme === undefined ? null : (theme as CanvasThemePatch) });
   const changedEnds = new Set<string>();
   for (const c of changes.edges) {
     if (c.kind === 'changed' && (c.before!.fromNode !== c.after!.fromNode || c.before!.toNode !== c.after!.toNode)) {
@@ -876,7 +1148,7 @@ export function canvasDiffOps(from: CanvasDocument, to: CanvasDocument): CanvasO
     if (c.kind === 'changed' && c.resized) ops.push({ op: 'resize', id: c.id, width: c.after!.width, height: c.after!.height });
   }
   for (const c of changes.nodes) {
-    if (c.kind !== 'changed' || !c.edited) continue;
+    if (c.kind !== 'changed' || !(c.edited || c.restyled)) continue;
     const set: CanvasNodeFields = {};
     const unset: Array<'color' | 'label'> = [];
     const a = c.after as unknown as Record<string, unknown>;
@@ -887,8 +1159,8 @@ export function canvasDiffOps(from: CanvasDocument, to: CanvasDocument): CanvasO
         if (key === 'color' || key === 'label') unset.push(key);
       } else (set as Record<string, unknown>)[key] = a[key];
     }
-    const ka = fieldsOf(c.after!).kite;
-    if (JSON.stringify(ka ?? {}) !== JSON.stringify(fieldsOf(c.before!).kite ?? {})) set.kite = ka ?? {};
+    const kite = nodeKitePatch(c.before!.kite, c.after!.kite);
+    if (kite) set.kite = kite;
     ops.push({ op: 'update', id: c.id, ...(Object.keys(set).length ? { set } : {}), ...(unset.length ? { unset } : {}) });
   }
   // Adds keep their place in the order, which is the stacking order.
@@ -904,25 +1176,31 @@ export function canvasDiffOps(from: CanvasDocument, to: CanvasDocument): CanvasO
         ...(e.label === undefined ? {} : { label: e.label }),
         ...(e.fromSide === undefined ? {} : { fromSide: e.fromSide }),
         ...(e.toSide === undefined ? {} : { toSide: e.toSide }),
+        ...(e.fromEnd === undefined ? {} : { fromEnd: e.fromEnd }),
+        ...(e.toEnd === undefined ? {} : { toEnd: e.toEnd }),
         ...(e.color === undefined ? {} : { color: e.color }),
+        ...(e.kite?.style ? { kite: { style: e.kite.style } } : {}),
       });
     } else if (c.kind === 'changed') {
       const set: Record<string, unknown> = {};
       const unset: string[] = [];
-      for (const key of EDGE_KEYS) {
+      for (const key of EDGE_FIELDS) {
         if (c.after![key] === c.before![key]) continue;
         if (c.after![key] === undefined) unset.push(key);
         else set[key] = c.after![key];
       }
+      const style = stylePatch(c.before!.kite?.style, c.after!.kite?.style);
+      if (style) set.kite = { style: c.after!.kite?.style === undefined ? null : style };
       ops.push({ op: 'update', id: c.id, ...(Object.keys(set).length ? { set } : {}), ...(unset.length ? { unset } : {}) } as CanvasOp);
     }
   }
+  for (const id of changes.assets.removed) ops.push({ op: 'deleteAsset', id });
   if (ops.length === 0) return ops;
   // A group move carries whatever sat inside it, including nodes that should
   // stay put. Replay and pin anything that ended up off target.
   try {
     let n = 0;
-    const ctx = { now: '1970-01-01T00:00:00.000Z', newId: (p: 'n' | 'e') => `${p}_diff${n++}` };
+    const ctx = { now: '1970-01-01T00:00:00.000Z', newId: (p: 'n' | 'e' | 'a') => `${p}_diff${n++}` };
     for (let pass = 0; pass < 4; pass++) {
       const replay = applyCanvasOps(from, ops, ctx).doc;
       const off = replay.nodes.filter((node) => {
@@ -957,6 +1235,8 @@ export interface CanvasOutlineNode {
   width: number;
   height: number;
   kite?: { kind: string; ref?: string; view?: string };
+  /** The node's icon, "lucide:<name>" or "asset:<id>". */
+  icon?: string;
   /** Only on groups: what sits directly inside (not inside a nested group). */
   children?: CanvasOutlineNode[];
 }
@@ -1017,6 +1297,7 @@ export function canvasOutline(doc: CanvasDocument, options: { frame?: string; de
       width: n.width,
       height: n.height,
       ...(n.kite?.kind ? { kite: { kind: n.kite.kind, ...(n.kite.ref ? { ref: n.kite.ref } : {}), ...(n.kite.view ? { view: n.kite.view } : {}) } } : {}),
+      ...(n.kite?.icon ? { icon: n.kite.icon.name } : {}),
     };
     if (n.type === 'group') {
       const inside = kids.get(n.id) ?? [];
