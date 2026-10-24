@@ -386,6 +386,19 @@ export const API_OPERATIONS: Record<string, Operation> = {
       '404': 'No such artifact, or you may not read it',
     },
   },
+  'GET /api/artifacts/:id/canvas/image': {
+    summary: 'A canvas drawn as a PNG or SVG image',
+    description:
+      'The canvas drawn by the server the way the web app draws it: styles, theme, fonts, Lucide and custom SVG icons, Kite and link cards, edges with their curves, arrows, dashes and labels, and the grid. Anybody who may read the canvas may have its image; a Kite card shows the title of a document only when you may open it. `format=png` (default) or `svg` (text as text, with the fonts it uses embedded). `version=<n>` draws a past version (owner only). `node=<id>` draws one node, or one group and what is inside it. `scale` from 1 to 3 (default 2) is pixels per canvas pixel; `padding` 0 to 400 canvas pixels around the drawing (default 32); `background=theme` (default) or `transparent`; `grid=false` leaves out the theme\'s grid. A PNG is at most 8192 pixels on a side and 16,777,216 in all; a larger one is refused with 400 (ask for a smaller scale, one group, or SVG). The image starts on whole canvas pixels: `X-Canvas-Origin: x,y` is the canvas point at its top left. `X-Artifact-Version` says which version it shows. The answer has an `ETag`; send it back as `If-None-Match` for a 304 when the image would come out the same. A token read is recorded as an agent read, unless `record=false`. Counted against its own hourly limit (`MAX_CANVAS_IMAGES_PER_HOUR`, default 120); a 304 is free.',
+    auth: 'optional',
+    responses: {
+      '200': 'The image (image/png or image/svg+xml)',
+      '304': 'Not modified: the image would be the same as the one you have',
+      '400': 'Not a canvas, an unknown node, a bad parameter, or a PNG too large',
+      '404': 'Not found, not yours to read, or (for version) not yours to manage or no such version',
+      '429': 'Too many images this hour',
+    },
+  },
   'GET /api/artifacts/:id/canvas/outline': {
     summary: 'A short map of a canvas',
     description:
