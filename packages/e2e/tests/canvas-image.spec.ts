@@ -99,8 +99,8 @@ function board(documentId: string, baseUrl: string) {
 }
 
 test('the PNG of a canvas matches what the browser draws', async ({ page, context }) => {
-  const document = await server.publish({ type: 'markdown', content: '# Design notes\n\nWhat the board is about.', title: 'Design notes' });
-  const canvas = await server.publish({ type: 'canvas', content: JSON.stringify(board(document.id, server.baseUrl)), title: 'Board' });
+  const notes = await server.publish({ type: 'markdown', content: '# Design notes\n\nWhat the board is about.', title: 'Design notes' });
+  const canvas = await server.publish({ type: 'canvas', content: JSON.stringify(board(notes.id, server.baseUrl)), title: 'Board' });
   await server.signInBrowser(context);
   await page.goto(`${server.baseUrl}/a/${canvas.slug}`);
   const view = page.getByTestId('canvas-view');
@@ -128,7 +128,10 @@ test('the PNG of a canvas matches what the browser draws', async ({ page, contex
   const scale = zoom * 2;
   const response = await server.as(`/api/artifacts/${canvas.id}/canvas/image?scale=${scale}&padding=0`);
   expect(response.status).toBe(200);
-  const [originX, originY] = (response.headers.get('x-canvas-origin') ?? '').split(',').map(Number);
+  const origin = /^(-?\d+),(-?\d+)$/.exec(response.headers.get('x-canvas-origin') ?? '');
+  expect(origin).not.toBeNull();
+  const originX = Number(origin![1]);
+  const originY = Number(origin![2]);
   const png = Buffer.from(await response.arrayBuffer());
 
   // Where the image's top left falls in the screenshot, in device pixels.
@@ -161,9 +164,9 @@ test('the PNG of a canvas matches what the browser draws', async ({ page, contex
             const a = (y * drawn.width + x) * 4;
             const b = (sy * screen.width + sx) * 4;
             const diff = Math.max(
-              Math.abs(drawn.data[a] - screen.data[b]),
-              Math.abs(drawn.data[a + 1] - screen.data[b + 1]),
-              Math.abs(drawn.data[a + 2] - screen.data[b + 2]),
+              Math.abs(drawn.data[a]! - screen.data[b]!),
+              Math.abs(drawn.data[a + 1]! - screen.data[b + 1]!),
+              Math.abs(drawn.data[a + 2]! - screen.data[b + 2]!),
             );
             compared++;
             total += diff;
@@ -188,13 +191,13 @@ test('the PNG of a canvas matches what the browser draws', async ({ page, contex
         shift: [best.dx - Math.round(left), best.dy - Math.round(top)],
         // The same comparison ten pixels off, to show it would notice a drawing in the wrong place.
         misplaced: compare(best.dx + 10, best.dy + 10, 1),
-        image: [drawn.width, drawn.height],
+        image: { width: drawn.width, height: drawn.height },
       };
     },
     { shot: shot.toString('base64'), png: png.toString('base64'), left, top },
   );
   // Most of the board is on screen, so most of the image is compared.
-  expect(result.compared).toBeGreaterThan(result.image[0] * result.image[1] * 0.9);
+  expect(result.compared).toBeGreaterThan(result.image.width * result.image.height * 0.9);
   // Anti-aliased edges and glyph hinting differ by a pixel here and there.
   expect(result.different).toBeLessThan(TOLERANCE.different);
   expect(result.mean).toBeLessThan(TOLERANCE.mean);
@@ -202,8 +205,8 @@ test('the PNG of a canvas matches what the browser draws', async ({ page, contex
 });
 
 test('the SVG of a canvas, drawn by the browser, matches the PNG', async ({ page }) => {
-  const document = await server.publish({ type: 'markdown', content: '# Design notes\n\nWhat the board is about.', title: 'Design notes' });
-  const canvas = await server.publish({ type: 'canvas', content: JSON.stringify(board(document.id, server.baseUrl)), title: 'Board' });
+  const notes = await server.publish({ type: 'markdown', content: '# Design notes\n\nWhat the board is about.', title: 'Design notes' });
+  const canvas = await server.publish({ type: 'canvas', content: JSON.stringify(board(notes.id, server.baseUrl)), title: 'Board' });
   const png = Buffer.from(await (await server.as(`/api/artifacts/${canvas.id}/canvas/image?scale=2`)).arrayBuffer());
   const svgResponse = await server.as(`/api/artifacts/${canvas.id}/canvas/image?format=svg&scale=2`);
   expect(svgResponse.headers.get('content-type')).toContain('image/svg+xml');
@@ -233,7 +236,7 @@ test('the SVG of a canvas, drawn by the browser, matches the PNG', async ({ page
       let different = 0;
       let total = 0;
       for (let i = 0; i < a.length; i += 4) {
-        const diff = Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2]));
+        const diff = Math.max(Math.abs(a[i]! - b[i]!), Math.abs(a[i + 1]! - b[i + 1]!), Math.abs(a[i + 2]! - b[i + 2]!));
         total += diff;
         if (diff > 64) different++;
       }

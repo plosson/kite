@@ -245,7 +245,7 @@ the server read the same look from `packages/shared` (`canvas-look.ts`).
 | `node` | a node id: that node, or a group and what is inside it | the whole canvas |
 | `scale` | 1 to 3, pixels per canvas pixel | 2 |
 | `padding` | 0 to 400 canvas pixels | 32 |
-| `background` | `theme`, `transparent` | `theme` |
+| `background` | `theme`, or `transparent` for no background and no grid | `theme` |
 | `grid` | `true`, `false` (the theme's grid) | `true` |
 | `record` | `false` to not record a token read | |
 
