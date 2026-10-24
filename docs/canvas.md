@@ -235,7 +235,7 @@ public Markdown document do. Links on a private canvas open directly.
 PNG (the default) or an SVG, without a browser. It draws what the web app
 draws: the styles and theme, the five fonts, Lucide icons and custom SVG
 icons, link and Kite cards, groups with their labels, edges with their
-curves, arrows, dashes and labels, and the dot or line grid. The browser and
+curves, arrows, dashes and labels, and the dot, line or cross grid. The browser and
 the server read the same look from `packages/shared` (`canvas-look.ts`).
 
 | Parameter | Values | Default |
@@ -278,8 +278,10 @@ How it is drawn:
   outline; in an SVG text stays text, with just the characters it uses
   embedded as WOFF2 fonts, so it can be selected and searched.
 - The `sans` font is drawn with Inter, the font the web app uses for it.
-  Only the scripts those fonts cover are drawn: emoji and Chinese, Japanese
-  or Korean characters have no glyphs in them and are left out.
+  Only the scripts those fonts cover are drawn in a PNG: emoji and Chinese,
+  Japanese or Korean characters have no glyphs in them, and are left out
+  with their space kept. An SVG keeps them as text, and whatever shows it
+  draws them with its own fonts.
 - Shadows in an SVG are blur filters. In a PNG they are put together from
   blurred corners and gradients, as Skia draws box-shadows, within 2/255 of
   a true blur.

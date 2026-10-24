@@ -206,8 +206,13 @@ class Drawing {
     return out;
   }
 
-  /** A glyph's definition, made the first time it is drawn; null for one with no outline, such as a space. */
+  /**
+   * A glyph's definition, made the first time it is drawn; null for one with no
+   * outline, such as a space, and for a character the font does not have
+   * (glyph 0), which the browser would draw from another font.
+   */
   private glyph(glyph: TextBlock['lines'][number]['glyphs'][number], skew: number): string | null {
+    if (glyph.id === 0) return null;
     const key = `glyph:${glyph.part}@${glyph.weight}#${glyph.id}/${skew}`;
     let id = this.glyphs.get(key);
     if (id === undefined) {

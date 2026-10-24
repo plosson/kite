@@ -64,6 +64,15 @@ describe('the SVG of a canvas', () => {
     expect(uses.length).toBeGreaterThan(glyphs.size);
   });
 
+  it('leaves out characters the fonts do not have in a PNG, and keeps them as text in an SVG', async () => {
+    const doc = canvas({ nodes: [{ id: 'n', type: 'text', x: 0, y: 0, width: 300, height: 80, text: 'Hi 😀 日本' }], edges: [] });
+    const png = (await renderCanvas(engine, doc, { ...OPTIONS, target: 'png' })).svg;
+    // "H" and "i" only: no empty boxes for the emoji or the two kanji.
+    expect(png.match(/<use href="#k[0-9a-z]+" transform="matrix/g) ?? []).toHaveLength(2);
+    const svg = (await renderCanvas(engine, doc, OPTIONS)).svg;
+    expect(svg).toContain('>Hi 😀 日本</text>');
+  });
+
   it('draws a start arrow and an end arrow each with its own marker, and none where the end is "none"', async () => {
     const svg = (await renderCanvas(engine, canvas(BOARD), OPTIONS)).svg;
     const e1 = svg.match(/<path [^>]*marker-start="url\(#(k[0-9a-z]+)\)"[^>]*marker-end="url\(#(k[0-9a-z]+)\)"/);
