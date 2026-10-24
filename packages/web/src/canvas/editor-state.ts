@@ -22,8 +22,8 @@ import {
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
-/** n_… or e_… with 12 random characters, the same shape the server makes. */
-export function localId(prefix: 'n' | 'e'): string {
+/** n_…, e_… or a_… (node, edge, asset) with 12 random characters, the same shape the server makes. */
+export function localId(prefix: 'n' | 'e' | 'a'): string {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
   let id = `${prefix}_`;

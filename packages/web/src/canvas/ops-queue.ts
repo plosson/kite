@@ -43,6 +43,11 @@ function subjects(op: QueuedOp): string[] {
       return [op.id ?? op.tempId ?? '', ...(op.in ? [op.in] : []), ...(op.near ? [op.near] : [])];
     case 'connect':
       return [op.id ?? op.tempId ?? '', op.from, op.to];
+    case 'addAsset':
+      return [op.id ?? op.tempId ?? ''];
+    case 'theme':
+      // The theme is one thing, the canvas's own.
+      return [':theme'];
     default:
       return [op.id];
   }
@@ -53,7 +58,9 @@ function fold(previous: QueuedOp, next: QueuedOp): QueuedOp | null {
   if (previous.op !== next.op) return null;
   if (next.op === 'move' && previous.op === 'move' && previous.id === next.id) return next;
   if (next.op === 'resize' && previous.op === 'resize' && previous.id === next.id) return next;
-  if (next.op === 'update' && previous.op === 'update' && previous.id === next.id && !previous.unset && !next.unset) {
+  // A kite patch merges key by key on the server (a style, a theme), so two of
+  // them are not one: they are sent as they are, in order.
+  if (next.op === 'update' && previous.op === 'update' && previous.id === next.id && !previous.unset && !next.unset && !previous.set?.kite && !next.set?.kite) {
     const set = { ...(previous.set ?? {}), ...(next.set ?? {}) };
     return { op: 'update', id: next.id, set } as QueuedOp;
   }

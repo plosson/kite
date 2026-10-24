@@ -26,6 +26,47 @@ describe('canvas history', () => {
     expect(parseCanvasContent('{"nodes":5}')).toEqual({ nodes: [], edges: [] });
   });
 
+  it('keeps a version’s theme and custom icons, and nothing else of its kite block', () => {
+    const stored = JSON.stringify({
+      ...v1,
+      kite: { format: 'kite-canvas', formatVersion: 1, docId: 'art_x', version: 4, theme: { grid: 'lines' }, assets: { a_1: { type: 'svg', svg: '<svg xmlns="http://www.w3.org/2000/svg"/>' } } },
+    });
+    expect(parseCanvasContent(stored).kite).toEqual({
+      format: 'kite-canvas',
+      formatVersion: 1,
+      theme: { grid: 'lines' },
+      assets: { a_1: { type: 'svg', svg: '<svg xmlns="http://www.w3.org/2000/svg"/>' } },
+    });
+  });
+
+  it('lists a restyle, a theme change and a new icon, and keeps a ghost’s icon drawable', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>';
+    const before: CanvasDocument = {
+      ...v1,
+      nodes: v1.nodes.map((n) => (n.id === 'b' ? { ...n, kite: { icon: { name: 'asset:old' } } } : n)),
+      kite: { format: 'kite-canvas', formatVersion: 1, assets: { old: { type: 'svg', svg } } },
+    };
+    const after: CanvasDocument = {
+      nodes: v1.nodes.filter((n) => n.id !== 'b').map((n) => (n.id === 'a' ? { ...n, kite: { style: { fill: '4' }, icon: { name: 'asset:new' } } } : n)),
+      edges: [],
+      kite: { format: 'kite-canvas', formatVersion: 1, theme: { grid: 'none' }, assets: { new: { type: 'svg', svg, name: 'Logo' } } },
+    };
+    const view = canvasChangesView(before, after);
+    expect(view.counts.restyled).toBe(1);
+    expect(view.rows.find((r) => r.id === 'a')).toMatchObject({ kind: 'changed', details: ['restyled'] });
+    expect(view.rows.find((r) => r.what === 'theme')).toMatchObject({ kind: 'changed', summary: 'Canvas theme' });
+    expect(view.rows.filter((r) => r.what === 'icon').map((r) => [r.kind, r.summary])).toEqual([
+      ['added', 'Logo'],
+      ['removed', 'old'],
+    ]);
+    expect(Object.keys(view.doc.kite?.assets ?? {}).sort()).toEqual(['new', 'old']);
+    // And restoring the old version brings its icon back before the node that wears it.
+    const restored = applyCanvasOps(after, restoreOps(after, before), { now: '2026-01-01T00:00:00.000Z', newId: (p) => `${p}_x` }).doc;
+    expect(restored.kite?.assets).toEqual(before.kite?.assets);
+    expect(restored.kite?.theme).toBeUndefined();
+    expect(restored.nodes.find((n) => n.id === 'a')?.kite?.style).toBeUndefined();
+  });
+
   it('lays out what changed, with removed things drawn back as ghosts', () => {
     const view = canvasChangesView(v1, v2);
     expect(view.marks).toEqual({ a: 'changed', b: 'removed', c: 'changed', d: 'added', e1: 'removed', e2: 'added' });

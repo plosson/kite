@@ -463,6 +463,7 @@ function CanvasChanges({ detail, previous }: { detail: ArtifactVersionDetail; pr
     counts.moved && `${counts.moved} moved`,
     counts.resized && `${counts.resized} resized`,
     counts.edited && `${counts.edited} edited`,
+    counts.restyled && `${counts.restyled} restyled`,
     counts.edgesAdded && `${counts.edgesAdded} ${counts.edgesAdded === 1 ? 'edge' : 'edges'} added`,
     counts.edgesRemoved && `${counts.edgesRemoved} ${counts.edgesRemoved === 1 ? 'edge' : 'edges'} removed`,
     counts.edgesChanged && `${counts.edgesChanged} ${counts.edgesChanged === 1 ? 'edge' : 'edges'} changed`,
@@ -492,7 +493,7 @@ function ChangeRow({ row }: { row: CanvasChangeRow }) {
     <li className="rounded-[--radius-sm] border border-line-2 px-2 py-1.5" data-change={row.kind}>
       <span className={`mr-1.5 font-medium ${tone}`}>
         {KIND_LABEL[row.kind]}
-        {row.what === 'edge' ? ' edge' : ''}
+        {row.what === 'edge' ? ' edge' : row.what === 'icon' ? ' icon' : ''}
       </span>
       <span className="text-ink">{row.summary}</span>
       {row.details.length > 0 && <span className="text-ink-3"> · {row.details.join(', ')}</span>}

@@ -11,12 +11,17 @@
  * a save that collided with them, it is read again and any unsaved work
  * replayed over it. Nodes that arrived that way are offered in a pill.
  *
+ * How things look (styles, icons, the canvas theme) is worked out in look.ts
+ * and icons.tsx, and changed from the style panel, as ordinary operations.
+ *
  * Default export so Artifact.tsx can lazy-load it: React Flow is a separate
- * chunk that Markdown and HTML readers never download.
+ * chunk that Markdown and HTML readers never download, and so are the canvas
+ * fonts and icons.
  */
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
+  BackgroundVariant,
   ConnectionMode,
   Controls,
   Handle,
@@ -41,15 +46,19 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './canvas.css';
+import './fonts.js';
 import {
   canvasDiffOps,
   findFreeSlot,
   isSafeCanvasUrl,
   type ArtifactSummary,
+  type CanvasAsset,
   type CanvasDocument,
+  type CanvasDocumentKite,
   type CanvasNode,
   type CanvasOp,
   type CanvasSide,
+  type CanvasTheme,
   type CommentThread,
 } from '@open-artifact/shared';
 import { api, ApiError, endpoints } from '../api.js';
@@ -60,8 +69,20 @@ import { createOpsQueue } from './ops-queue.js';
 import { applyBestEffort, createEditorState, localId } from './editor-state.js';
 import { edgeSides, flowNodes, isBigCanvas, linkHref, LOD } from './to-flow.js';
 import type { CanvasMark } from './history.js';
+import { backdropLook, edgeLook, nodeLook, type NodeLook } from './look.js';
+import { NodeIcon, usesLucide, useLucide, type LucideSet } from './icons.js';
+import { StylePanel } from './StylePanel.js';
+import { IconPicker, type IconChoice } from './IconPicker.js';
+import { iconOps } from './style-ops.js';
 
-type CanvasPayload = CanvasDocument & { kite: { version: number; docId: string } };
+type CanvasPayload = CanvasDocument & { kite: CanvasDocumentKite & { version: number; docId: string } };
+
+/** What of the server's kite block belongs to the document itself: not its id or version. */
+function documentKite(kite: CanvasPayload['kite']): CanvasDocumentKite | undefined {
+  const { theme, assets } = kite;
+  if (!theme && !assets) return undefined;
+  return { format: 'kite-canvas', formatVersion: 1, ...(theme ? { theme } : {}), ...(assets ? { assets } : {}) };
+}
 
 interface Marker {
   count: number;
@@ -78,6 +99,10 @@ interface NodeData extends Record<string, unknown> {
   marker?: Marker;
   autoEdit?: boolean;
   actions: NodeActions;
+  theme: CanvasTheme | undefined;
+  assets: Record<string, CanvasAsset> | undefined;
+  /** Lucide's icon shapes, once loaded. */
+  lucide: LucideSet | null;
 }
 
 interface NodeActions {
@@ -88,20 +113,6 @@ interface NodeActions {
 }
 
 type KiteNode = Node<NodeData>;
-
-const PRESET: Record<string, string> = {
-  '1': '#e5484d',
-  '2': '#f76b15',
-  '3': '#ffc53d',
-  '4': '#30a46c',
-  '5': '#0090ff',
-  '6': '#8e4ec6',
-};
-
-function colourOf(color: string | undefined): string | undefined {
-  if (!color) return undefined;
-  return PRESET[color] ?? color;
-}
 
 const SIDES = [
   ['top', Position.Top],
@@ -162,28 +173,52 @@ function CommentMarker({ marker, onOpen }: { marker: Marker; onOpen: (id: string
   );
 }
 
+const ALIGN_ITEMS = { left: 'flex-start', center: 'center', right: 'flex-end' } as const;
+
+/** A node's icon and its content, laid out as the icon's position says. */
+function WithIcon({ data, look, children }: { data: NodeData; look: NodeLook; children?: React.ReactNode }) {
+  const icon = data.node.kite?.icon;
+  if (!icon) return <>{children}</>;
+  const glyph = <NodeIcon icon={icon} assets={data.assets} lucide={data.lucide} ink={look.ink} />;
+  if (icon.position === 'top') {
+    const align = ALIGN_ITEMS[(look.text.textAlign as keyof typeof ALIGN_ITEMS | undefined) ?? 'left'];
+    return (
+      <div className="flex min-h-0 flex-col gap-1.5" style={{ alignItems: align }}>
+        {glyph}
+        <div className="min-h-0 w-full">{children}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-0 items-center gap-2">
+      {glyph}
+      <div className="min-h-0 min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
 function Frame({
   data,
   selected,
   children,
+  onDoubleClick,
+  title,
   minWidth = 60,
   minHeight = 40,
 }: {
   data: NodeData;
   selected: boolean;
   children?: React.ReactNode;
+  onDoubleClick?: () => void;
+  title?: string;
   minWidth?: number;
   minHeight?: number;
 }) {
-  const { node, editable, marker, actions, parentOrigin } = data;
-  const colour = colourOf(node.color);
+  const { node, editable, marker, actions, parentOrigin, theme } = data;
+  const look = nodeLook(node, theme);
   const far = useFar();
   return (
-    <div
-      className={far ? 'relative h-full w-full rounded-md border bg-surface' : 'relative h-full w-full rounded-md border bg-surface p-2 text-sm text-ink shadow-sm'}
-      style={{ borderColor: colour ?? 'var(--color-line, #d4d4d8)' }}
-      data-canvas-node={node.id}
-    >
+    <div className="kite-node relative h-full w-full" style={look.box} data-canvas-node={node.id}>
       {editable && (
         <NodeResizer
           isVisible={selected}
@@ -196,7 +231,18 @@ function Frame({
       )}
       <Handles editable={editable} />
       {marker && <CommentMarker marker={marker} onOpen={actions.openThread} />}
-      {far ? null : <div className="h-full w-full overflow-hidden">{children}</div>}
+      {far ? null : (
+        <div
+          className="flex h-full w-full flex-col overflow-hidden p-2"
+          style={{ ...look.text, justifyContent: look.justify }}
+          onDoubleClick={onDoubleClick}
+          title={title}
+        >
+          <WithIcon data={data} look={look}>
+            {children}
+          </WithIcon>
+        </div>
+      )}
     </div>
   );
 }
@@ -212,10 +258,15 @@ const TextNode = memo(function TextNode({ data, selected }: NodeProps<KiteNode>)
   }, [autoEdit, editable]);
 
   return (
-    <Frame data={data} selected={!!selected}>
+    <Frame
+      data={data}
+      selected={!!selected}
+      onDoubleClick={editable && !editing ? () => setEditing(true) : undefined}
+      title={editable && !editing ? 'Double-click to edit' : undefined}
+    >
       {editing ? (
         <textarea
-          className="nodrag nowheel h-full w-full resize-none bg-transparent outline-none"
+          className="nodrag nowheel block h-full min-h-[3em] w-full resize-none bg-transparent outline-none"
           autoFocus
           value={draft}
           aria-label="Text"
@@ -233,11 +284,7 @@ const TextNode = memo(function TextNode({ data, selected }: NodeProps<KiteNode>)
           }}
         />
       ) : (
-        <div
-          className="h-full whitespace-pre-wrap break-words"
-          onDoubleClick={editable ? () => setEditing(true) : undefined}
-          title={editable ? 'Double-click to edit' : undefined}
-        >
+        <div className="whitespace-pre-wrap break-words">
           {text || (editable ? <span className="text-ink-3 italic">Double-click to write</span> : null)}
         </div>
       )}
@@ -249,8 +296,8 @@ const LinkNode = memo(function LinkNode({ data, selected }: NodeProps<KiteNode>)
   const { node, isPublic, editable, actions } = data;
   if (node.type !== 'link') return null;
   return (
-    <Frame data={data} selected={!!selected}>
-      <div className="flex h-full flex-col gap-1" onDoubleClick={editable ? () => actions.editLink(node.id) : undefined}>
+    <Frame data={data} selected={!!selected} onDoubleClick={editable ? () => actions.editLink(node.id) : undefined}>
+      <div className="flex flex-col gap-1">
         <span className="text-[11px] uppercase tracking-wide text-ink-3">Link</span>
         <a
           className="nodrag break-all text-accent underline"
@@ -266,8 +313,8 @@ const LinkNode = memo(function LinkNode({ data, selected }: NodeProps<KiteNode>)
 });
 
 const GroupNode = memo(function GroupNode({ data, selected }: NodeProps<KiteNode>) {
-  const { node, editable, actions, marker, parentOrigin } = data;
-  const colour = colourOf(node.color);
+  const { node, editable, actions, marker, parentOrigin, theme } = data;
+  const look = nodeLook(node, theme);
   const label = node.type === 'group' ? (node.label ?? '') : '';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
@@ -277,11 +324,7 @@ const GroupNode = memo(function GroupNode({ data, selected }: NodeProps<KiteNode
   }, [data.autoEdit, editable]);
   const far = useFar();
   return (
-    <div
-      className="relative h-full w-full rounded-lg border-2 border-dashed"
-      style={{ borderColor: colour ?? 'var(--color-line, #d4d4d8)', background: colour ? `${colour}10` : 'transparent' }}
-      data-canvas-node={node.id}
-    >
+    <div className="kite-node relative h-full w-full" style={look.box} data-canvas-node={node.id}>
       {editable && (
         <NodeResizer
           isVisible={!!selected}
@@ -316,12 +359,16 @@ const GroupNode = memo(function GroupNode({ data, selected }: NodeProps<KiteNode
         />
       ) : (
         !far && (
-          <div
-            className="px-2 py-1 text-xs font-semibold text-muted"
-            onDoubleClick={editable ? () => setEditing(true) : undefined}
-            title={editable ? 'Double-click to rename' : undefined}
-          >
-            {label || (editable ? <span className="italic text-ink-3">Group</span> : null)}
+          <div className="flex px-2 pt-1.5" style={{ justifyContent: ALIGN_ITEMS[(look.text.textAlign as keyof typeof ALIGN_ITEMS | undefined) ?? 'left'] }}>
+            <div
+              className="kite-group-label flex items-center gap-1.5 rounded px-1 py-0.5"
+              style={look.label}
+              onDoubleClick={editable ? () => setEditing(true) : undefined}
+              title={editable ? 'Double-click to rename' : undefined}
+            >
+              {node.kite?.icon && <NodeIcon icon={node.kite.icon} assets={data.assets} lucide={data.lucide} ink={String(look.label.color)} />}
+              {label || (editable ? <span className="font-normal italic text-ink-3">Group</span> : null)}
+            </div>
           </div>
         )
       )}
@@ -481,6 +528,8 @@ function CanvasInner({
   const [autoEdit, setAutoEdit] = useState<string | null>(null);
   const [dialog, setDialog] = useState<null | { kind: 'link'; id?: string } | { kind: 'kite' } | { kind: 'edge'; id: string }>(null);
   const [composing, setComposing] = useState<string | null>(null);
+  const [styling, setStyling] = useState(false);
+  const [pickingIcon, setPickingIcon] = useState(false);
   const [, setTick] = useState(0);
   const editor = useMemo(() => createEditorState(), []);
   const queueRef = useRef<ReturnType<typeof createOpsQueue> | null>(null);
@@ -500,7 +549,8 @@ function CanvasInner({
     const first = localRef.current === null;
     versionRef.current = next.kite.version;
     setVersion(next.kite.version);
-    const rebased = applyBestEffort({ nodes: next.nodes, edges: next.edges }, queueRef.current?.unsaved() ?? []);
+    const kite = documentKite(next.kite);
+    const rebased = applyBestEffort({ nodes: next.nodes, edges: next.edges, ...(kite ? { kite } : {}) }, queueRef.current?.unsaved() ?? []);
     if (!first) {
       const arrived = rebased.nodes.filter((n) => !known.has(n.id)).map((n) => n.id);
       if (arrived.length > 0) setIncoming((current) => [...new Set([...current, ...arrived])]);
@@ -671,6 +721,10 @@ function CanvasInner({
   const far = zoom < LOD.far;
   const showLabels = zoom >= LOD.labels;
   const big = local ? isBigCanvas(local) : false;
+  const lucide = useLucide(usesLucide(local) || pickingIcon);
+  const theme = local?.kite?.theme;
+  const assets = local?.kite?.assets;
+  const backdrop = backdropLook(theme);
 
   const built = useMemo(() => {
     if (!local) return { nodes: [] as KiteNode[], edges: [] as Edge[] };
@@ -696,28 +750,37 @@ function CanvasInner({
         marker: markers.get(shape.id),
         autoEdit: autoEdit === shape.id,
         actions,
+        theme,
+        assets,
+        lucide,
       },
     }));
     const edges: Edge[] = local.edges.map((edge) => {
       const sides = edgeSides(edge, byId);
-      const colour = colourOf(edge.color);
+      const look = edgeLook(edge, theme);
+      const marker = { type: MarkerType.ArrowClosed, width: look.arrow, height: look.arrow, markerUnits: 'userSpaceOnUse', ...(look.colour ? { color: look.colour } : {}) };
       return {
         id: edge.id,
         source: edge.fromNode,
         target: edge.toNode,
+        type: look.type,
         sourceHandle: sides.fromSide,
         targetHandle: sides.toSide,
         label: showLabels ? edge.label : undefined,
+        labelStyle: look.labelStyle,
+        labelBgStyle: look.labelBgStyle,
+        labelBgPadding: [6, 3] as [number, number],
+        labelBgBorderRadius: 4,
         // On a big canvas zoomed out, edges are the dearest thing to draw and nobody can follow them.
         hidden: big && far,
         ...(marks?.[edge.id] ? { className: `kite-mark-${marks[edge.id]}` } : {}),
-        style: colour ? { stroke: colour } : undefined,
-        markerEnd: edge.toEnd === 'none' ? undefined : { type: MarkerType.ArrowClosed, ...(colour ? { color: colour } : {}) },
-        markerStart: edge.fromEnd === 'arrow' ? { type: MarkerType.ArrowClosed } : undefined,
+        style: look.style,
+        markerEnd: look.end ? marker : undefined,
+        markerStart: look.start ? marker : undefined,
       };
     });
     return { nodes, edges };
-  }, [local, editable, isPublic, markers, autoEdit, actions, showLabels, big, far, activeNodeId, marks]);
+  }, [local, editable, isPublic, markers, autoEdit, actions, showLabels, big, far, activeNodeId, marks, theme, assets, lucide]);
 
   const [nodes, setNodes] = useState<KiteNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -877,6 +940,32 @@ function CanvasInner({
 
   const selectedNodes = nodes.filter((n) => n.selected);
   const commentTarget = selectedNodes.length === 1 ? selectedNodes[0]!.id : null;
+  const selectedNodeIds = selectedNodes.map((n) => n.id).join(' ');
+  const chosenNodes = useMemo(() => {
+    const ids = new Set(selectedNodeIds.split(' '));
+    return (local?.nodes ?? []).filter((n) => ids.has(n.id));
+  }, [local, selectedNodeIds]);
+  const selectedEdgeIds = edges.filter((e) => e.selected).map((e) => e.id).join(' ');
+  const chosenEdges = useMemo(() => {
+    const ids = new Set(selectedEdgeIds.split(' '));
+    return (local?.edges ?? []).filter((e) => ids.has(e.id));
+  }, [local, selectedEdgeIds]);
+
+  const chooseIcon = useCallback(
+    (choice: IconChoice) => {
+      if (choice.asset) {
+        const id = localId('a');
+        act([
+          { op: 'addAsset', id, svg: choice.asset.svg, ...(choice.asset.name ? { name: choice.asset.name } : {}) },
+          ...iconOps(chosenNodes, { ...choice.icon, name: `asset:${id}` }),
+        ]);
+      } else {
+        act(iconOps(chosenNodes, choice.icon));
+      }
+      setPickingIcon(false);
+    },
+    [act, chosenNodes],
+  );
 
   if (failure && !local) {
     return <div className="p-6 text-sm text-danger">{failure}</div>;
@@ -884,11 +973,16 @@ function CanvasInner({
 
   return (
     <div
-      ref={wrapper}
-      className={`kite-canvas relative h-full min-h-[480px] w-full${editable ? ' is-editable' : ''}`}
+      className={`kite-canvas relative flex h-full min-h-[480px] w-full${editable ? ' is-editable' : ''}`}
       data-testid="canvas-view"
       data-version={version}
     >
+      <div
+        ref={wrapper}
+        className="relative h-full min-w-0 flex-1"
+        style={backdrop.background ? { background: backdrop.background } : undefined}
+        data-testid="canvas-flow"
+      >
       <ReactFlow<KiteNode, Edge>
         nodes={nodes}
         edges={edges}
@@ -912,7 +1006,14 @@ function CanvasInner({
         minZoom={0.05}
         proOptions={{ hideAttribution: false }}
       >
-        <Background />
+        {backdrop.grid !== 'none' && (
+          <Background
+            variant={backdrop.grid === 'lines' ? BackgroundVariant.Lines : backdrop.grid === 'cross' ? BackgroundVariant.Cross : BackgroundVariant.Dots}
+            {...(backdrop.gridColor ? { color: backdrop.gridColor } : {})}
+            {...(backdrop.grid === 'cross' ? { size: 6 } : {})}
+            bgColor={backdrop.background ?? 'transparent'}
+          />
+        )}
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable />
         {(editable || canComment) && (
@@ -931,6 +1032,18 @@ function CanvasInner({
                   </Button>
                   <Button size="sm" tone="ghost" onClick={addGroup} title="Wraps the selected nodes, or adds an empty group">
                     + Group
+                  </Button>
+                  <span className="mx-1 h-4 w-px bg-line" />
+                  <Button
+                    size="sm"
+                    tone="ghost"
+                    aria-pressed={styling}
+                    className={styling ? 'bg-accent-wash text-accent' : ''}
+                    onClick={() => setStyling((on) => !on)}
+                    title="Colours, fonts and icons of the selection, or the canvas theme"
+                    data-testid="canvas-style-toggle"
+                  >
+                    Style
                   </Button>
                   <span className="mx-1 h-4 w-px bg-line" />
                   <Button size="sm" tone="ghost" disabled={!editor.canUndo} onClick={() => undoRedo('undo')} aria-label="Undo" title="Undo (Ctrl/⌘ Z)">
@@ -1015,6 +1128,21 @@ function CanvasInner({
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-surface px-3 py-1.5 text-xs text-danger shadow" role="status" data-testid="canvas-notice">
           {notice}
         </div>
+      )}
+      </div>
+      {editable && styling && local && (
+        <StylePanel
+          doc={local}
+          nodes={chosenNodes}
+          edges={chosenEdges}
+          lucide={lucide}
+          apply={act}
+          onPickIcon={() => setPickingIcon(true)}
+          onClose={() => setStyling(false)}
+        />
+      )}
+      {editable && pickingIcon && chosenNodes.length > 0 && (
+        <IconPicker assets={assets} current={chosenNodes.find((n) => n.kite?.icon)?.kite?.icon} onClose={() => setPickingIcon(false)} onChoose={chooseIcon} />
       )}
       {editable && dialog?.kind === 'link' && (
         <LinkDialog
