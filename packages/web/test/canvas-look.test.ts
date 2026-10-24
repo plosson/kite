@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CanvasEdge, CanvasNode } from '@open-artifact/shared';
-import { backdropLook, edgeLook, nodeLook, paint } from '../src/canvas/look.js';
+import { backdropLook, edgeLook, minimapLook, nodeLook, paint } from '../src/canvas/look.js';
 import { common, edgeStyleOps, iconOps, nodeStyleOps, resetNodeOps, themeOps } from '../src/canvas/style-ops.js';
 
 const text = (extra: Partial<CanvasNode> = {}): CanvasNode =>
@@ -91,5 +91,15 @@ describe('what the style panel sends', () => {
   it('shows a value only when the whole selection agrees', () => {
     expect(common(['4', '4'])).toEqual({ value: '4', mixed: false });
     expect(common(['4', undefined])).toEqual({ value: undefined, mixed: true });
+  });
+});
+
+describe('the minimap', () => {
+  it('shows a node in its fill, and a see-through group as a wash of its border', () => {
+    expect(minimapLook(text({ kite: { style: { fill: '#fff7e8', borderColor: '#efb54f' } } }), undefined)).toEqual({ fill: '#fff7e8', stroke: '#efb54f' });
+    const group = { id: 'g', type: 'group', x: 0, y: 0, width: 10, height: 10, kite: { style: { borderColor: '4' } } } as CanvasNode;
+    const look = minimapLook(group, undefined);
+    expect(look.stroke).toBe(paint('4'));
+    expect(look.fill).toBe(`color-mix(in srgb, ${paint('4')} 18%, transparent)`);
   });
 });

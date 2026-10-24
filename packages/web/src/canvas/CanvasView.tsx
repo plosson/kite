@@ -69,7 +69,7 @@ import { createOpsQueue } from './ops-queue.js';
 import { applyBestEffort, createEditorState, localId } from './editor-state.js';
 import { edgeSides, flowNodes, isBigCanvas, linkHref, LOD } from './to-flow.js';
 import type { CanvasMark } from './history.js';
-import { backdropLook, edgeLook, nodeLook, type NodeLook } from './look.js';
+import { backdropLook, edgeLook, minimapLook, nodeLook, type NodeLook } from './look.js';
 import { NodeIcon, usesLucide, useLucide, type LucideSet } from './icons.js';
 import { StylePanel } from './StylePanel.js';
 import { IconPicker, type IconChoice } from './IconPicker.js';
@@ -1015,7 +1015,13 @@ function CanvasInner({
           />
         )}
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(n) => minimapLook((n.data as NodeData).node, theme).fill}
+          nodeStrokeColor={(n) => minimapLook((n.data as NodeData).node, theme).stroke}
+          nodeStrokeWidth={2}
+        />
         {(editable || canComment) && (
           <Panel position="top-left">
             <div className="flex flex-wrap items-center gap-1 rounded-md border border-line bg-surface p-1 shadow-sm" data-testid="canvas-toolbar">

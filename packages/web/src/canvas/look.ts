@@ -209,6 +209,14 @@ export function edgeLook(edge: CanvasEdge, theme: CanvasTheme | undefined): Edge
   };
 }
 
+/** A node in the minimap: its fill, or a wash of its border when it has none (a group, usually). */
+export function minimapLook(node: CanvasNode, theme: CanvasTheme | undefined): { fill: string; stroke: string } {
+  const s = resolvedNodeStyle(node, theme);
+  const stroke = paint(s.borderColor);
+  const fill = s.fill === 'transparent' ? `color-mix(in srgb, ${stroke} 18%, transparent)` : paint(s.fill);
+  return { fill, stroke };
+}
+
 /** The canvas behind the nodes. */
 export interface BackdropLook {
   background: string | undefined;

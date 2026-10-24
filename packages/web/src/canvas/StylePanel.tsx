@@ -398,7 +398,7 @@ function ColorField({ value, mixed, onChange, testId }: FieldProps<string>) {
   };
   const shown = value ? paint(value) : undefined;
   return (
-    <div className="relative flex flex-1 items-center gap-1.5" data-testid={testId}>
+    <div className="relative flex min-w-0 flex-1 items-center gap-1.5" data-testid={testId}>
       <button
         type="button"
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[--radius-sm] border border-line"
