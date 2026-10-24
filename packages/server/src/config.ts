@@ -79,6 +79,8 @@ export interface Config {
     commentsPerHour: number;
     /** Canvas operation batches per hour, per person. Kept apart from publishing. */
     canvasOpsPerHour: number;
+    /** Canvas images drawn per hour, per person: each one is real work for the server. */
+    canvasImagesPerHour: number;
     /** Sign-in codes per hour, per address asking. Sends real email, so tightest. */
     authRequestsPerHour: number;
     /** New shares per hour, per person. Sends real email, so kept low. */
@@ -317,6 +319,10 @@ export function loadConfig(env: Env): Config {
         max: 100_000,
       }),
       canvasOpsPerHour: readInteger(env, 'MAX_CANVAS_OPS_PER_HOUR', 600, problems, {
+        min: 1,
+        max: 100_000,
+      }),
+      canvasImagesPerHour: readInteger(env, 'MAX_CANVAS_IMAGES_PER_HOUR', 120, problems, {
         min: 1,
         max: 100_000,
       }),

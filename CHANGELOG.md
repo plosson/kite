@@ -29,6 +29,26 @@ date is the day the change became available on open-artifact.com.
 
 ---
 
+## Unreleased
+
+### Get a canvas as an image
+
+> **As an author,** I want a picture of my canvas,
+> **so that** I can put it in a slide, a message or a document.
+
+Ask Kite for `GET /api/artifacts/:id/canvas/image`. You get a PNG, or an
+SVG with `format=svg`. The image looks like the canvas in the browser. It
+has the same colours, fonts, icons, cards, edges and grid.
+
+You can draw a past version, or one group and what is inside it. You can
+choose the scale, the padding and a transparent background. Your agent can
+do the same with `agentio kite canvas image`.
+
+Kite draws the image on its own server. No browser is used. A Kite card
+shows the title of a document only to a person who can open that document.
+
+---
+
 ## 24 October 2026 (1.5.0)
 
 ### Give a canvas its own look

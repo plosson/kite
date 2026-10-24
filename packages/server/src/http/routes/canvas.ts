@@ -10,6 +10,8 @@
  *   the version it is, or with every Kite extra removed (`format=jsoncanvas-strict`).
  * - GET  /api/artifacts/:id/canvas/outline  a short tree of groups and one
  *   line per node, for an agent to find its way before reading everything.
+ * - GET  /api/artifacts/:id/canvas/image  the canvas drawn as a PNG or SVG,
+ *   as the web app shows it, for an agent or a person to look at or pass on.
  * - POST /api/artifacts/:id/canvas/ops  a batch of operations, applied all or
  *   nothing against the version the caller read, written as ONE new version.
  *
@@ -19,7 +21,8 @@
  * positions, so re-sending after a re-read is safe.
  */
 
-import type { Hono } from 'hono';
+import { createHash } from 'node:crypto';
+import type { Context, Hono } from 'hono';
 import { newId } from '../../ids.js';
 import {
   applyCanvasOps,
@@ -35,11 +38,21 @@ import { ApiError } from '../../errors.js';
 import { requireUser, currentUser } from '../session.js';
 import { actorOf } from '../origin.js';
 import { readJsonObject, jsonBodyCap } from '../body.js';
-import { requireAccess } from '../../artifacts/access.js';
+import { canAccess, requireAccess } from '../../artifacts/access.js';
 import type { ArtifactDetail } from '../../artifacts/service.js';
 import { nowIso } from '../../time.js';
 import { recordView } from './views.js';
 import { requireKnownIcons } from '../../canvas/icons.js';
+import {
+  CANVAS_IMAGE_LIMITS,
+  CanvasImageError,
+  canvasImage,
+  RENDERER_VERSION,
+  type CanvasImageOptions,
+  type KiteRef,
+} from '../../canvas/image/index.js';
+import { addressOf, refusal } from '../rate-limit.js';
+import { versionNumber } from './versions.js';
 
 export function registerCanvasRoutes(app: Hono<AppEnv>, context: AppContext): void {
   const { artifacts, sharing, config, rateLimiter } = context;
@@ -99,6 +112,77 @@ export function registerCanvasRoutes(app: Hono<AppEnv>, context: AppContext): vo
     }
     c.header('X-Artifact-Version', String(artifact.version));
     return c.json({ docId: artifact.id, version: artifact.version, ...outline });
+  });
+
+  /**
+   * The canvas drawn as an image, by the server, the way the web app draws it.
+   *
+   * Read like the canvas itself: whoever may open it may have its picture. A
+   * past version (`version`) is the owner's only, as with the versions routes.
+   * A token read is recorded as an agent read, unless `record=false`.
+   *
+   * Drawing is real work, so it has its own hourly budget, and the answer
+   * carries an ETag: asking again with If-None-Match for an image that would
+   * come out the same is a 304 and costs nothing from that budget.
+   */
+  app.get('/api/artifacts/:id/canvas/image', async (c) => {
+    const artifact = requireCanvas(artifacts.get(c.req.param('id')));
+    const facts = sharing.accessFactsFor(artifact);
+    const user = c.get('user') ?? null;
+    requireAccess(user, facts, 'view');
+
+    const options = imageOptions(c);
+    const versionRaw = c.req.query('version');
+    let version = artifact.version;
+    let content = artifact.content;
+    if (versionRaw !== undefined) {
+      requireAccess(user, facts, 'manage');
+      version = versionNumber(versionRaw);
+      content = artifacts.getVersion(artifact.id, version).content;
+    }
+    if (c.get('credential') === 'token' && c.req.query('record') !== 'false') {
+      recordView(c, context, { id: artifact.id, version }, facts, 'api');
+    }
+
+    const doc = parseCanvas(content);
+    if (options.node !== undefined && !doc.nodes.some((n) => n.id === options.node)) {
+      throw new ApiError('validation_failed', `This canvas has no node "${options.node}" at version ${version}.`);
+    }
+    // What Kite cards show depends on who is reading: a title they may see, or that they cannot open it.
+    const refs = new Map<string, KiteRef>();
+    for (const node of doc.nodes) {
+      const ref = node.kite?.kind === 'kite' ? node.kite.ref : undefined;
+      if (!ref || refs.has(ref)) continue;
+      const target = artifacts.find(ref);
+      if (target && canAccess(user, sharing.accessFactsFor(target), 'view')) refs.set(ref, { title: target.title, type: target.type });
+    }
+
+    const etag = `"${createHash('sha256')
+      .update(JSON.stringify([RENDERER_VERSION, artifact.id, version, options, [...refs].sort(([a], [b]) => (a < b ? -1 : 1))]))
+      .digest('base64url')
+      .slice(0, 32)}"`;
+    c.header('ETag', etag);
+    c.header('Cache-Control', 'private, no-cache');
+    c.header('X-Artifact-Version', String(version));
+    if (matches(c.req.header('if-none-match'), etag)) return c.body(null, 304);
+
+    const retryAfter = rateLimiter.check('canvas-image', user?.id ?? addressOf(c), {
+      limit: config.limits.canvasImagesPerHour,
+      windowSeconds: 3600,
+    });
+    if (retryAfter !== null) throw refusal(c, retryAfter);
+
+    let image;
+    try {
+      image = await canvasImage(doc, options, refs);
+    } catch (error) {
+      if (error instanceof CanvasImageError) throw new ApiError('validation_failed', error.message);
+      throw error;
+    }
+    c.header('Content-Type', image.contentType);
+    c.header('Content-Disposition', disposition(artifact.title, options.format));
+    c.header('X-Canvas-Origin', `${image.origin.x},${image.origin.y}`);
+    return c.body(image.body);
   });
 
   app.post('/api/artifacts/:id/canvas/ops', requireUser, opsLimit, async (c) => {
@@ -171,4 +255,57 @@ function requireCanvas(artifact: ArtifactDetail): ArtifactDetail {
     );
   }
   return artifact;
+}
+
+/** The image's options from the query, each checked, with its default when left out. */
+function imageOptions(c: Context<AppEnv>): CanvasImageOptions {
+  const q = (name: string) => {
+    const value = c.req.query(name);
+    return value === undefined || value === '' ? undefined : value;
+  };
+  const oneOf = <T extends string>(name: string, allowed: readonly T[], fallback: T): T => {
+    const value = q(name) ?? fallback;
+    if (!(allowed as readonly string[]).includes(value)) {
+      throw new ApiError('validation_failed', `${name} must be ${allowed.map((a) => `"${a}"`).join(' or ')}.`);
+    }
+    return value as T;
+  };
+  const { minScale, maxScale, defaultScale, maxPadding, defaultPadding } = CANVAS_IMAGE_LIMITS;
+
+  const scaleRaw = q('scale');
+  const scale = scaleRaw === undefined ? defaultScale : Number(scaleRaw);
+  if (scaleRaw !== undefined && (!/^\d+(\.\d+)?$/.test(scaleRaw) || scale < minScale || scale > maxScale)) {
+    throw new ApiError('validation_failed', `scale must be a number from ${minScale} to ${maxScale}.`);
+  }
+  const paddingRaw = q('padding');
+  const padding = paddingRaw === undefined ? defaultPadding : Number(paddingRaw);
+  if (paddingRaw !== undefined && (!/^\d+$/.test(paddingRaw) || padding > maxPadding)) {
+    throw new ApiError('validation_failed', `padding must be a whole number of canvas pixels from 0 to ${maxPadding}.`);
+  }
+  return {
+    format: oneOf('format', ['png', 'svg'] as const, 'png'),
+    node: q('node'),
+    scale,
+    padding,
+    background: oneOf('background', ['theme', 'transparent'] as const, 'theme'),
+    grid: oneOf('grid', ['true', 'false'] as const, 'true') === 'true',
+  };
+}
+
+/** Whether an If-None-Match header names this ETag. */
+function matches(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  return header.split(',').some((tag) => {
+    const t = tag.trim();
+    return t === '*' || t === etag || t === `W/${etag}`;
+  });
+}
+
+/** Shown in place, saved under the document's title. */
+function disposition(title: string, format: 'png' | 'svg'): string {
+  // Control characters and what file systems refuse in a name become spaces.
+  const cleaned = [...title].map((ch) => (ch < ' ' || ch === '\u007f' || '/\\:*?"<>|'.includes(ch) ? ' ' : ch)).join('');
+  const name = `${cleaned.replace(/\s+/g, ' ').trim().slice(0, 120) || 'canvas'}.${format}`;
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }

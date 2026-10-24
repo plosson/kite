@@ -229,6 +229,71 @@ nodes or edges the edges go too. A large canvas opens at 50% zoom or closer.
 Links on a public canvas go through the "you are leaving" page, as links in a
 public Markdown document do. Links on a private canvas open directly.
 
+## Images
+
+`GET /api/artifacts/:id/canvas/image` draws the canvas on the server, as a
+PNG (the default) or an SVG, without a browser. It draws what the web app
+draws: the styles and theme, the five fonts, Lucide icons and custom SVG
+icons, link and Kite cards, groups with their labels, edges with their
+curves, arrows, dashes and labels, and the dot, line or cross grid. The browser and
+the server read the same look from `packages/shared` (`canvas-look.ts`).
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `format` | `png`, `svg` | `png` |
+| `version` | a past version number (owner only) | the current one |
+| `node` | a node id: that node, or a group and what is inside it | the whole canvas |
+| `scale` | 1 to 3, pixels per canvas pixel | 2 |
+| `padding` | 0 to 400 canvas pixels | 32 |
+| `background` | `theme`, or `transparent` for no background and no grid | `theme` |
+| `grid` | `true`, `false` (the theme's grid) | `true` |
+| `record` | `false` to not record a token read | |
+
+Whoever may read the canvas may have its image. A Kite card shows the title
+of the document it points at only to somebody who may open that document;
+anybody else sees "A document you can't open", as in the browser. A token
+read is recorded as an agent read, like reading the canvas, unless
+`record=false`.
+
+The answer says where it is on the canvas: `X-Canvas-Origin: x,y` is the
+canvas point at the image's top left, and one canvas pixel is `scale` image
+pixels. `X-Artifact-Version` is the version drawn. The `ETag` changes when
+the canvas, the options, the renderer or the Kite cards' titles change; ask
+with `If-None-Match` and an unchanged image is a 304. `Content-Disposition`
+names the file after the canvas title.
+
+Limits: the canvas limits apply (5,000 nodes); a PNG is at most 8,192 pixels
+on a side and 16,777,216 pixels in all, and a larger one is refused with a
+message that says how big it would be (ask for a smaller scale, one group
+with `node`, or an SVG, which has no pixel limit). Images have their own
+hourly budget per person, or per address when signed out
+(`MAX_CANVAS_IMAGES_PER_HOUR`, default 120); a 304 does not count. Two images
+are drawn at a time on one server; others wait.
+
+How it is drawn:
+
+- Text is shaped with HarfBuzz from the same font files the web app serves,
+  and wrapped as the browser wraps it (`pre-wrap` for cards, addresses
+  broken anywhere, titles cut with an ellipsis). In a PNG each glyph is an
+  outline; in an SVG text stays text, with just the characters it uses
+  embedded as WOFF2 fonts, so it can be selected and searched.
+- The `sans` font is drawn with Inter, the font the web app uses for it.
+  Only the scripts those fonts cover are drawn in a PNG: emoji and Chinese,
+  Japanese or Korean characters have no glyphs in them, and are left out
+  with their space kept. An SVG keeps them as text, and whatever shows it
+  draws them with its own fonts.
+- Shadows in an SVG are blur filters. In a PNG they are put together from
+  blurred corners and gradients, as Skia draws box-shadows, within 2/255 of
+  a true blur.
+- Custom SVG icons, already sanitised when they were added, are drawn as
+  images, so they cannot style or reach the drawing around them.
+- A Kite card in preview mode is drawn as a card: its title and what kind of
+  document it is, not the document inside it.
+- The PNG is made with resvg (`@resvg/resvg-js`), in the server process.
+
+The web app's e2e tests compare the PNG with a screenshot of the same canvas
+in Chromium, and the SVG drawn by Chromium with the PNG, pixel by pixel.
+
 ## Comments
 
 Select a node and press **Comment**. The node shows a marker with the number

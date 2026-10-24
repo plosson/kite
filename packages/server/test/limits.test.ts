@@ -298,6 +298,7 @@ describe('the limits an operator can change', () => {
       publishesPerHour: 120,
       commentsPerHour: 300,
       canvasOpsPerHour: 600,
+      canvasImagesPerHour: 120,
       authRequestsPerHour: 20,
       sharesPerHour: 30,
       liveStreamsPerUser: 20,

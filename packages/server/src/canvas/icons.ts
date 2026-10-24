@@ -10,14 +10,26 @@ import { createRequire } from 'node:module';
 import { lucideName, type CanvasDocument } from '@open-artifact/shared';
 import { ApiError } from '../errors.js';
 
-let names: Set<string> | null = null;
+/** One SVG element of a Lucide icon: its tag and attributes, drawn on a 24×24 grid. */
+export type LucideShape = [string, Record<string, string | number>];
 
-function lucideNames(): Set<string> {
-  if (!names) {
+let shapes: Map<string, LucideShape[]> | null = null;
+
+function lucideShapesByName(): Map<string, LucideShape[]> {
+  if (!shapes) {
     const require = createRequire(import.meta.url);
-    names = new Set(Object.keys(require('lucide-static/icon-nodes.json') as Record<string, unknown>));
+    shapes = new Map(Object.entries(require('lucide-static/icon-nodes.json') as Record<string, LucideShape[]>));
   }
-  return names;
+  return shapes;
+}
+
+function lucideNames(): Map<string, unknown> {
+  return lucideShapesByName();
+}
+
+/** The shapes of a Lucide icon, or null when there is no such icon. */
+export function lucideShapes(name: string): LucideShape[] | null {
+  return lucideShapesByName().get(name) ?? null;
 }
 
 export function isLucideIcon(name: string): boolean {
